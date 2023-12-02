@@ -1,4 +1,4 @@
-use pkgbuild_rs::parse_multi;
+use pkgbuild::parse_multi;
 
 fn main() {
     let mut args = std::env::args_os();
