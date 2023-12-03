@@ -1,5 +1,6 @@
 use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
 
+use hex::FromHex;
 use libc::{PIPE_BUF, EAGAIN};
 use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
 use tempfile::NamedTempFile;
@@ -967,14 +968,14 @@ pub struct Pkgbuild {
     pub makedepends: Vec<Dependency>,
     pub provides: Vec<Provide>,
     pub sources: Vec<String>,
-    pub cksums: Vec<String>,
-    pub md5sums: Vec<String>,
-    pub sha1sums: Vec<String>,
-    pub sha224sums: Vec<String>,
-    pub sha256sums: Vec<String>,
-    pub sha384sums: Vec<String>,
-    pub sha512sums: Vec<String>,
-    pub b2sums: Vec<String>,
+    pub cksums: Vec<Option<u32>>,
+    pub md5sums: Vec<Option<[u8; 16]>>,
+    pub sha1sums: Vec<Option<[u8; 20]>>,
+    pub sha224sums: Vec<Option<[u8; 28]>>,
+    pub sha256sums: Vec<Option<[u8; 32]>>,
+    pub sha384sums: Vec<Option<[u8; 48]>>,
+    pub sha512sums: Vec<Option<[u8; 64]>>,
+    pub b2sums: Vec<Option<[u8; 64]>>,
     pub pkgver_func: bool,
 }
 pub(crate) struct Pkgbuilds {
@@ -1001,6 +1002,35 @@ impl TryFrom<&PackageParsing<'_>> for Package {
 fn vec_string_from_vec_slice_u8(original: &Vec<&[u8]>) -> Vec<String> {
     original.iter().map(|item|
         string_from_slice_u8(item)).collect()
+}
+
+fn cksum_from_raw(raw: &&[u8]) -> Option<u32> {
+    if raw == b"SKIP" {
+        return None
+    }
+    String::from_utf8_lossy(raw).parse().ok()
+}
+
+fn cksums_from_raws<'a, I>(raws: I) -> Vec<Option<u32>> 
+where
+    I: IntoIterator<Item = &'a &'a [u8]>
+{
+    raws.into_iter().map(|raw|cksum_from_raw(raw)).collect()
+}
+
+fn hash_sum_from_hex<C: FromHex>(hex: &&[u8]) -> Option<C> {
+    if hex == b"SKIP" {
+        return None
+    }
+    FromHex::from_hex(hex).ok()
+}
+
+fn hash_sums_from_hexes<'a, I, C>(hexes: I) -> Vec<Option<C>> 
+where
+    I: IntoIterator<Item = &'a &'a [u8]>,
+    C: FromHex
+{
+    hexes.into_iter().map(|hex|hash_sum_from_hex(hex)).collect()
 }
 
 impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
@@ -1032,14 +1062,14 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             makedepends,
             provides,
             sources: vec_string_from_vec_slice_u8(&value.sources),
-            cksums: vec_string_from_vec_slice_u8(&value.cksums),
-            md5sums: vec_string_from_vec_slice_u8(&value.md5sums),
-            sha1sums: vec_string_from_vec_slice_u8(&value.sha1sums),
-            sha224sums: vec_string_from_vec_slice_u8(&value.sha224sums),
-            sha256sums: vec_string_from_vec_slice_u8(&value.sha256sums),
-            sha384sums: vec_string_from_vec_slice_u8(&value.sha384sums),
-            sha512sums: vec_string_from_vec_slice_u8(&value.sha512sums),
-            b2sums: vec_string_from_vec_slice_u8(&value.b2sums),
+            cksums: cksums_from_raws(&value.cksums),
+            md5sums: hash_sums_from_hexes(&value.md5sums),
+            sha1sums: hash_sums_from_hexes(&value.sha1sums),
+            sha224sums: hash_sums_from_hexes(&value.sha224sums),
+            sha256sums: hash_sums_from_hexes(&value.sha256sums),
+            sha384sums: hash_sums_from_hexes(&value.sha384sums),
+            sha512sums: hash_sums_from_hexes(&value.sha512sums),
+            b2sums: hash_sums_from_hexes(&value.b2sums),
             pkgver_func: value.pkgver_func,
         })
     }
