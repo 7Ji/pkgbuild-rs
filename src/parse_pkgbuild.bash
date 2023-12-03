@@ -1,6 +1,13 @@
 source "${LIBRARY}/"util.sh
 source "${LIBRARY}/"source.sh
 source_makepkg_config
+dump_array() { #1: var name, 2: report name
+  declare -n array="$1"
+  local item
+  for item in "${array[@]}"; do
+    echo "$2:${item}"
+  done
+}
 dump_array_with_optional_arch() { #1: var name, 2: report name
   declare -n array="$1"
   declare -n array_arch="$1_${CARCH}"
@@ -17,6 +24,9 @@ while read -r line; do
   for item in "${pkgname[@]}"; do
     echo "name:${item}"
   done
+  echo "ver:${pkgver}"
+  echo "rel:${pkgrel}"
+  echo "epoch:${epoch}"
   dump_array_with_optional_arch depends dep
   dump_array_with_optional_arch makedepends makedep
   dump_array_with_optional_arch provides provide
@@ -37,8 +47,7 @@ while read -r line; do
     dump_array_with_optional_arch depends dep_"${item}"
     dump_array_with_optional_arch provides provide_"${item}"
   done
-  unset -v pkgbase pkgname {depends,makedepends,provides,source}{,_"${CARCH}"}
-  for _integ in {ck,md5,sha{1,224,256,384,512},b2}; do
-    unset "${_integ}sums" "${_integ}sums_${CARCH}"
-  done
+  unset -v pkgbase pkgname {depends,makedepends,provides,source}{,_"${CARCH}"} \
+           {ck,md5,sha{1,224,256,384,512},b2}sums{,_"${CARCH}"} \
+           pkgver pkgrel epoch
 done

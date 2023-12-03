@@ -565,8 +565,8 @@ impl Parser {
             log::debug!("Raw output from parser:\n{}", 
                 String::from_utf8_lossy(&out));
         }
-        let pkgbuilds = Pkgbuilds::from_borrowed(
-            PkgbuildsParsing::from_parser_output(&out)?);
+        let pkgbuilds = Pkgbuilds::try_from(
+            &PkgbuildsParsing::from_parser_output(&out)?)?;
         let actual_count = pkgbuilds.entries.len();
         if actual_count != count {
             log::error!("Parsed PKGBUILDs count {} != input count {}",
@@ -628,29 +628,24 @@ where
 
 /// A sub-package parsed from a split-package `PKGBUILD`, borrowed variant
 /// during parsing. Library users should not used this.
+#[derive(Default)]
 struct PackageParsing<'a> {
-    name: &'a [u8],
-    deps: Vec<&'a [u8]>,
+    pkgname: &'a [u8],
+    depends: Vec<&'a [u8]>,
     provides: Vec<&'a [u8]>,
-}
-
-impl<'a> Default for PackageParsing<'a> {
-    fn default() -> Self {
-        Self {
-            name: b"",
-            deps: vec![],
-            provides: vec![]
-        }
-    }
 }
 
 /// A `PKGBUILD` being parsed. Library users should
 /// not use this.
+#[derive(Default)]
 struct PkgbuildParsing<'a> {
-    base: &'a [u8],
+    pkgbase: &'a [u8],
     pkgs: Vec<PackageParsing<'a>>,
-    deps: Vec<&'a [u8]>,
-    makedeps: Vec<&'a [u8]>,
+    pkgver: &'a [u8],
+    pkgrel: &'a [u8],
+    epoch: &'a [u8],
+    depends: Vec<&'a [u8]>,
+    makedepends: Vec<&'a [u8]>,
     provides: Vec<&'a [u8]>,
     sources: Vec<&'a [u8]>,
     cksums: Vec<&'a [u8]>,
@@ -664,28 +659,7 @@ struct PkgbuildParsing<'a> {
     pkgver_func: bool,
 }
 
-impl<'a> Default for PkgbuildParsing<'a> {
-    fn default() -> Self {
-        Self {
-            base: b"",
-            pkgs: vec![],
-            deps: vec![],
-            makedeps: vec![],
-            provides: vec![],
-            sources: vec![],
-            cksums: vec![],
-            md5sums: vec![],
-            sha1sums: vec![],
-            sha224sums: vec![],
-            sha256sums: vec![],
-            sha384sums: vec![],
-            sha512sums: vec![],
-            b2sums: vec![],
-            pkgver_func: false,
-        }
-    }
-}
-
+#[derive(Default)]
 struct PkgbuildsParsing<'a> {
     entries: Vec<PkgbuildParsing<'a>>
 }
@@ -722,15 +696,18 @@ impl<'a> PkgbuildsParsing<'a> {
                     return Err(Error::ParserScriptIllegalOutput(line.into()));
                 }
                 match key {
-                    b"base" => pkgbuild.base = value,
+                    b"base" => pkgbuild.pkgbase = value,
                     b"name" => {
                         let mut pkg =
                             PackageParsing::default();
-                        pkg.name = value;
+                        pkg.pkgname = value;
                         pkgbuild.pkgs.push(pkg);
                     },
-                    b"dep" => pkgbuild.deps.push(value),
-                    b"makedep" => pkgbuild.makedeps.push(value),
+                    b"ver" => pkgbuild.pkgver = value,
+                    b"rel" => pkgbuild.pkgrel = value,
+                    b"epoch" => pkgbuild.epoch = value,
+                    b"dep" => pkgbuild.depends.push(value),
+                    b"makedep" => pkgbuild.makedepends.push(value),
                     b"provide" => pkgbuild.provides.push(value),
                     b"source" => pkgbuild.sources.push(value),
                     b"ck" => pkgbuild.cksums.push(value),
@@ -764,7 +741,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         for pkg_cmp in
                             pkgbuild.pkgs.iter_mut()
                         {
-                            if pkg_cmp.name == name {
+                            if pkg_cmp.pkgname == name {
                                 pkg = Some(pkg_cmp);
                                 break
                             }
@@ -778,7 +755,7 @@ impl<'a> PkgbuildsParsing<'a> {
                             },
                         };
                         if is_dep {
-                            pkg.deps.push(value)
+                            pkg.depends.push(value)
                         } else {
                             pkg.provides.push(value)
                         }
@@ -803,22 +780,192 @@ impl<'a> PkgbuildsParsing<'a> {
     }
 }
 
-/// A sub-package parsed from a split-package `PKGBUILD`, owned variant
-/// during parsing. Library users should not used this.
-#[derive(Debug)]
-pub struct Package {
-    pub name: String,
-    pub deps: Vec<String>,
-    pub provides: Vec<String>,
+#[derive(Debug, PartialEq, Default)]
+pub struct UnorderedVersion {
+    pub epoch: String,
+    pub pkgver: String,
+    pub pkgrel: String
 }
 
+impl TryFrom<&str> for UnorderedVersion {
+    type Error = Error;
+    
+    fn try_from(value: &str) -> Result<Self> {
+        let (epoch, value) = 
+            match value.split_once(':') 
+        {
+            Some((epoch, remaining)) 
+                =>(epoch.into(), remaining),
+            None => (Default::default(), value),
+        };
+        let (pkgver, pkgrel) = 
+            match value.rsplit_once('-') 
+        {
+            Some((pkgver,pkgrel)) => (pkgver.into(), pkgrel.into()),
+            None => (value.into(), Default::default()),
+        };
+        Ok(Self { epoch, pkgver, pkgrel })
+    }
+}
+
+impl TryFrom<&[u8]> for UnorderedVersion {
+    type Error = Error;
+
+    fn try_from(value: &[u8]) -> Result<Self> {
+        Self::try_from(String::from_utf8_lossy(value).as_ref())
+    }
+}
+
+fn string_from_slice_u8(original: &[u8]) -> String {
+    String::from_utf8_lossy(original).into()
+}
+
+impl UnorderedVersion {
+    fn from_raw(epoch: &[u8], pkgver: &[u8], pkgrel: &[u8]) -> Self {
+        Self {
+            epoch: string_from_slice_u8(epoch),
+            pkgver: string_from_slice_u8(pkgver),
+            pkgrel: string_from_slice_u8(pkgrel),
+        }
+    }
+}
+
+/// The dependency order, comparision is not implemented yet
+#[derive(Debug, PartialEq)]
+pub enum DependencyOrder {
+    Greater,
+    GreaterOrEqual,
+    Equal,
+    LessOrEqual,
+    Less
+}
+
+/// The dependency version, comparision is not implemented yet
+#[derive(Debug, PartialEq)]
+pub struct OrderedVersion {
+    pub order: DependencyOrder,
+    /// The version info without ordering
+    pub unordered: UnorderedVersion,
+}
+
+/// A dependency
+#[derive(Debug, PartialEq)]
+pub struct Dependency {
+    pub name: String,
+    pub version: Option<OrderedVersion>
+}
+
+impl TryFrom<&str> for Dependency {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        if let Some((name, version)) = 
+            value.split_once("=") 
+        {
+            if let Some((name, version)) = 
+                value.split_once(">=") 
+            {
+                Ok(Self { name: name.into(), 
+                    version: Some(OrderedVersion { 
+                        order: DependencyOrder::GreaterOrEqual, 
+                        unordered: version.try_into()? }) })
+            } else if let Some((name, version)) = 
+                value.split_once("<=") 
+            {
+                Ok(Self { name: name.into(), 
+                    version: Some(OrderedVersion { 
+                        order: DependencyOrder::LessOrEqual, 
+                        unordered: version.try_into()? }) })
+            } else {
+                Ok(Self { name: name.into(), 
+                    version: Some(OrderedVersion { 
+                        order: DependencyOrder::Equal, 
+                        unordered: version.try_into()? }) })
+            }
+        } else if let Some((name, version)) = 
+            value.split_once('>') 
+        {
+            Ok(Self { name: name.into(), 
+                version: Some(OrderedVersion { 
+                    order: DependencyOrder::Greater, 
+                    unordered: version.try_into()? }) })
+
+        } else if let Some((name, version)) = 
+            value.split_once('<') 
+        {
+            Ok(Self { name: name.into(), 
+                version: Some(OrderedVersion { 
+                    order: DependencyOrder::Less, 
+                    unordered: version.try_into()? }) })
+        } else {
+            Ok(Self {name: value.into(), version: None})
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for Dependency {
+    type Error = Error;
+
+    fn try_from(value: &[u8]) -> Result<Self> {
+        Self::try_from(String::from_utf8_lossy(value).as_ref())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Provide {
+    pub name: String,
+    pub version: Option<UnorderedVersion>
+}
+
+impl TryFrom<&str> for Provide {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        if value.contains('>') ||
+            value.contains('<') 
+        {
+            log::error!("Version string '{}' contains illegal > or <", value);
+            return Err(Error::BrokenPKGBUILDs(Vec::new()))
+        }
+        if let Some((name, version)) = 
+            value.split_once("=") 
+        {
+            Ok(Self { name: name.into(), 
+                version: Some(version.try_into()?) }) 
+        } else {
+            Ok(Self {name: value.into(), version: None})
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for Provide {
+    type Error = Error;
+
+    fn try_from(value: &[u8]) -> Result<Self> {
+        Self::try_from(String::from_utf8_lossy(value).as_ref())
+    }
+}
+
+/// A sub-package parsed from a split-package `PKGBUILD`
+#[derive(Debug)]
+pub struct Package {
+    /// The name of the split pacakge
+    pub pkgname: String,
+    /// The dependencies of the split package
+    pub depends: Vec<Dependency>,
+    /// What virtual packages does this package provide
+    pub provides: Vec<Provide>,
+}
+
+/// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug)]
 pub struct Pkgbuild {
-    pub base: String,
+    pub pkgbase: String,
     pub pkgs: Vec<Package>,
-    pub deps: Vec<String>,
-    pub makedeps: Vec<String>,
-    pub provides: Vec<String>,
+    pub version: UnorderedVersion,
+    pub depends: Vec<Dependency>,
+    pub makedepends: Vec<Dependency>,
+    pub provides: Vec<Provide>,
     pub sources: Vec<String>,
     pub cksums: Vec<String>,
     pub md5sums: Vec<String>,
@@ -834,50 +981,78 @@ pub(crate) struct Pkgbuilds {
     entries: Vec<Pkgbuild>
 }
 
-fn vec_string_from_vec_u8(original: &Vec<&[u8]>) -> Vec<String> {
+impl TryFrom<&PackageParsing<'_>> for Package {
+    type Error = Error;
+
+    fn try_from(value: &PackageParsing) -> Result<Self> {
+        let mut depends = Vec::new();
+        for depend in value.depends.iter() {
+            depends.push(String::from_utf8_lossy(depend).as_ref().try_into()?)
+        }
+        let mut provides = Vec::new();
+        for provide in value.provides.iter() {
+            provides.push(String::from_utf8_lossy(provide).as_ref().try_into()?)
+        }
+        let pkgname = String::from_utf8_lossy(value.pkgname).into();
+        Ok(Self { pkgname, depends, provides })
+    }
+}
+
+fn vec_string_from_vec_slice_u8(original: &Vec<&[u8]>) -> Vec<String> {
     original.iter().map(|item|
-        String::from_utf8_lossy(item).into_owned()).collect()
+        string_from_slice_u8(item)).collect()
 }
 
-impl Package {
-    fn from_borrowed(borrowed: &PackageParsing) -> Self {
-        Self {
-            name: String::from_utf8_lossy(borrowed.name).into_owned(),
-            deps: vec_string_from_vec_u8(&borrowed.deps),
-            provides: vec_string_from_vec_u8(&borrowed.provides),
+impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
+    type Error = Error;
+
+    fn try_from(value: &PkgbuildParsing) -> Result<Self> {
+        let mut pkgs = Vec::new();
+        for pkg in value.pkgs.iter() {
+            pkgs.push(pkg.try_into()?)
         }
+        let mut depends = Vec::new();
+        for depend in value.depends.iter() {
+            depends.push((*depend).try_into()?)
+        }
+        let mut makedepends = Vec::new();
+        for makedepend in value.makedepends.iter() {
+            makedepends.push((*makedepend).try_into()?)
+        }
+        let mut provides = Vec::new();
+        for provide in value.provides.iter() {
+            provides.push((*provide).try_into()?)
+        }
+        Ok(Self {
+            pkgbase: string_from_slice_u8(value.pkgbase),
+            pkgs,
+            version: UnorderedVersion::from_raw(
+                value.epoch, value.pkgver, value.pkgrel),
+            depends,
+            makedepends,
+            provides,
+            sources: vec_string_from_vec_slice_u8(&value.sources),
+            cksums: vec_string_from_vec_slice_u8(&value.cksums),
+            md5sums: vec_string_from_vec_slice_u8(&value.md5sums),
+            sha1sums: vec_string_from_vec_slice_u8(&value.sha1sums),
+            sha224sums: vec_string_from_vec_slice_u8(&value.sha224sums),
+            sha256sums: vec_string_from_vec_slice_u8(&value.sha256sums),
+            sha384sums: vec_string_from_vec_slice_u8(&value.sha384sums),
+            sha512sums: vec_string_from_vec_slice_u8(&value.sha512sums),
+            b2sums: vec_string_from_vec_slice_u8(&value.b2sums),
+            pkgver_func: value.pkgver_func,
+        })
     }
 }
 
-impl Pkgbuild {
-    fn from_borrowed(borrowed: &PkgbuildParsing) -> Self {
-        Self {
-            base: String::from_utf8_lossy(borrowed.base).into_owned(),
-            pkgs: borrowed.pkgs.iter().map(|pkg|
-                Package::from_borrowed(pkg)).collect(),
-            deps: vec_string_from_vec_u8(&borrowed.deps),
-            makedeps: vec_string_from_vec_u8(&borrowed.makedeps),
-            provides: vec_string_from_vec_u8(&borrowed.provides),
-            sources: vec_string_from_vec_u8(&borrowed.sources),
-            cksums: vec_string_from_vec_u8(&borrowed.cksums),
-            md5sums: vec_string_from_vec_u8(&borrowed.md5sums),
-            sha1sums: vec_string_from_vec_u8(&borrowed.sha1sums),
-            sha224sums: vec_string_from_vec_u8(&borrowed.sha224sums),
-            sha256sums: vec_string_from_vec_u8(&borrowed.sha256sums),
-            sha384sums: vec_string_from_vec_u8(&borrowed.sha384sums),
-            sha512sums: vec_string_from_vec_u8(&borrowed.sha512sums),
-            b2sums: vec_string_from_vec_u8(&borrowed.b2sums),
-            pkgver_func: borrowed.pkgver_func,
-        }
-    }
-}
+impl TryFrom<&PkgbuildsParsing<'_>> for Pkgbuilds {
+    type Error = Error;
 
-impl Pkgbuilds {
-    fn from_borrowed(borrowed: PkgbuildsParsing) -> Self {
-        Self {
-            entries: borrowed.entries.iter().map(
-                |entry|
-                    Pkgbuild::from_borrowed(entry)).collect(),
+    fn try_from(value: &PkgbuildsParsing<'_>) -> Result<Self> {
+        let mut entries = Vec::new();
+        for entry in value.entries.iter() {
+            entries.push(entry.try_into()?)
         }
+        Ok(Self {entries})
     }
 }
