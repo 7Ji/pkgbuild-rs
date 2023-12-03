@@ -958,6 +958,15 @@ pub struct Package {
     pub provides: Vec<Provide>,
 }
 
+pub type Cksum = u32;
+pub type Md5sum = [u8; 16];
+pub type Sha1sum = [u8; 20];
+pub type Sha224sum = [u8; 28];
+pub type Sha256sum = [u8; 32];
+pub type Sha384sum = [u8; 48];
+pub type Sha512sum = [u8; 64];
+pub type B2sum = [u8; 64];
+
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug)]
 pub struct Pkgbuild {
@@ -968,14 +977,14 @@ pub struct Pkgbuild {
     pub makedepends: Vec<Dependency>,
     pub provides: Vec<Provide>,
     pub sources: Vec<String>,
-    pub cksums: Vec<Option<u32>>,
-    pub md5sums: Vec<Option<[u8; 16]>>,
-    pub sha1sums: Vec<Option<[u8; 20]>>,
-    pub sha224sums: Vec<Option<[u8; 28]>>,
-    pub sha256sums: Vec<Option<[u8; 32]>>,
-    pub sha384sums: Vec<Option<[u8; 48]>>,
-    pub sha512sums: Vec<Option<[u8; 64]>>,
-    pub b2sums: Vec<Option<[u8; 64]>>,
+    pub cksums: Vec<Option<Cksum>>,
+    pub md5sums: Vec<Option<Md5sum>>,
+    pub sha1sums: Vec<Option<Sha1sum>>,
+    pub sha224sums: Vec<Option<Sha224sum>>,
+    pub sha256sums: Vec<Option<Sha256sum>>,
+    pub sha384sums: Vec<Option<Sha384sum>>,
+    pub sha512sums: Vec<Option<Sha512sum>>,
+    pub b2sums: Vec<Option<B2sum>>,
     pub pkgver_func: bool,
 }
 pub(crate) struct Pkgbuilds {
