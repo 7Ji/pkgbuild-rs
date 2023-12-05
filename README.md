@@ -6,6 +6,8 @@ This is **naive** in the sense that it does not understand `PKGBUILD`s natively,
 
 On a test sample of 47 `PKGBUILD`s all with split packages, the test `main` executable took only ~310 milliseconds to assemble the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~50 milliseconds. It should scale pretty well for a non-trivial repo hoster.
 
+I've yet not find a method to dump all of ArchLinux's official `PKGBUILD`s without effectively DDoSing their Gitlab server for a big enough test sample. But for a simple calculation, for all of the current 12435 PKGBUILDs, this should take ~621.750 seconds (12435 * 50 / 1000) to parse in a single thread, and would take shorter if threaded. Compared to that, for a simple repo that only hosts a couple hundred of PKGBUILDs, you'll only need ~1 second single-threaded.
+
 ## Not for AUR helper
 
 This was extracted from [7Ji/arch_repo_builder](https://github.com/7Ji/arch_repo_builder), which uses the parser to extract those data into Rust so sources and depencencies could be resolved natively in the Rust world. 
