@@ -1573,7 +1573,11 @@ impl Display for Pkgbuild {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{base: {}, pkgs: [", self.pkgbase)?;
         format_write_array(f, &self.pkgs)?;
-        write!(f, "], version: {}, depends: [", self.version)?;
+        write!(f, "], version: {}", self.version)?;
+        if self.pkgver_func {
+            write!(f, " (has pkgver func)")?;
+        }
+        write!(f, ", depends: [")?;
         format_write_array(f, &self.depends)?;
         write!(f, "], makedepends: [")?;
         format_write_array(f, &self.makedepends)?;
@@ -1597,7 +1601,7 @@ impl Display for Pkgbuild {
         format_write_integ_sums_array(f, &self.sha512sums)?;
         write!(f, "], b2sums: [")?;
         format_write_integ_sums_array(f, &self.b2sums)?;
-        write!(f, "], pkgver_func: {}}}", self.pkgver_func)
+        write!(f, "]}}")
     }
 }
 
