@@ -2,6 +2,12 @@
 
 A naive [PKGBUILD](https://wiki.archlinux.org/title/PKGBUILD) parser for Rust. Useful to extract package name, sources and dependency relationships from them. 
 
+This is **naive** in the sense that it does not understand `PKGBUILD`s natively, nor does it care what the `PKGBUILD`s do. Instead, it uses a Bash instance to run a highly efficient script dynamically generated from [our template](src/parse_pkgbuild.bash), and feeds the list of `PKGBUILD`s that need to be parsed into the script's stdin, then read and parse the script's stdout which is in our internal compact format.
+
+On a test sample of 47 `PKGBUILD`s all with split packages, the test `main` executable took only ~310 milliseconds to assemble the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~50 milliseconds. It should scale pretty well for a non-trivial repo hoster.
+
+## Not for AUR helper
+
 This was extracted from [7Ji/arch_repo_builder](https://github.com/7Ji/arch_repo_builder), which uses the parser to extract those data into Rust so sources and depencencies could be resolved natively in the Rust world. 
 
 This should be used by a repo builder like arb, but not an AUR helper. An AUR helper should get these data from AUR API instead.
