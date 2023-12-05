@@ -11,3 +11,7 @@ libc = "0.2"
 log = "0.4"
 nix = { version = "0.27", features = ["fs"] }
 tempfile = "3.8"
+
+[features]
+default = ["format"]
+format = []

@@ -1,4 +1,4 @@
-use std::{ffi::{OsString, OsStr}, fmt::Display, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
+use std::{ffi::{OsString, OsStr}, fmt::{Display, Formatter}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
 
 use hex::FromHex;
 use libc::{PIPE_BUF, EAGAIN};
@@ -788,6 +788,20 @@ pub struct UnorderedVersion {
     pub pkgrel: String
 }
 
+#[cfg(feature = "format")]
+impl Display for UnorderedVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if ! self.epoch.is_empty() {
+            write!(f, "{}:", self.epoch)?;
+        }
+        write!(f, "{}", self.pkgver)?;
+        if ! self.pkgrel.is_empty() {
+            write!(f, "-{}", self.pkgrel)?
+        }
+        Ok(())
+    }
+}
+
 impl TryFrom<&str> for UnorderedVersion {
     type Error = Error;
     
@@ -841,6 +855,24 @@ pub enum DependencyOrder {
     Less
 }
 
+#[cfg(feature = "format")]
+impl Display for DependencyOrder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DependencyOrder::Greater => 
+                write!(f, ">"),
+            DependencyOrder::GreaterOrEqual => 
+                write!(f, ">="),
+            DependencyOrder::Equal => 
+                write!(f, "="),
+            DependencyOrder::LessOrEqual => 
+                write!(f, "<="),
+            DependencyOrder::Less => 
+                write!(f, "<"),
+        }
+    }
+}
+
 /// The dependency version, comparision is not implemented yet
 #[derive(Debug, PartialEq)]
 pub struct OrderedVersion {
@@ -849,11 +881,30 @@ pub struct OrderedVersion {
     pub unordered: UnorderedVersion,
 }
 
+#[cfg(feature = "format")]
+impl Display for OrderedVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.order, self.unordered)
+    }
+}
+
+
 /// A dependency
 #[derive(Debug, PartialEq)]
 pub struct Dependency {
     pub name: String,
     pub version: Option<OrderedVersion>
+}
+
+#[cfg(feature = "format")]
+impl Display for Dependency {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(version) = &self.version {
+            write!(f, "{}{}", self.name, version)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
 }
 
 impl TryFrom<&str> for Dependency {
@@ -918,6 +969,17 @@ pub struct Provide {
     pub version: Option<UnorderedVersion>
 }
 
+#[cfg(feature = "format")]
+impl Display for Provide {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(version) = &self.version {
+            write!(f, "{}={}", self.name, version)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
 impl TryFrom<&str> for Provide {
     type Error = Error;
 
@@ -958,6 +1020,36 @@ pub struct Package {
     pub provides: Vec<Provide>,
 }
 
+#[cfg(feature = "format")]
+fn format_write_array<I, D>(f: &mut Formatter<'_>, array: I) 
+-> std::fmt::Result 
+where
+    I: IntoIterator<Item = D>,
+    D: Display
+{
+    let mut started = false;
+    for item in array.into_iter() {
+        if started {
+            write!(f, ", {}", item)?
+        } else {
+            started = true;
+            write!(f, "{}", item)?
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "format")]
+impl Display for Package {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{name: {}, depends: [", self.pkgname)?;
+        format_write_array(f, &self.depends)?;
+        write!(f, "], provides: [")?;
+        format_write_array(f, &self.provides)?;
+        write!(f, "]}}")
+    }
+}
+
 /// A VSC source fragment, declared in source as `url#fragment`, usually to 
 /// declare which `fragment` of the VSC source to use, e.g. commit, tag, etc
 pub trait Fragment {
@@ -980,8 +1072,9 @@ pub trait Fragment {
         where Self: Sized;
 }
 
+#[cfg(feature = "format")]
 impl Display for dyn Fragment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let (ftype, value) = self.get_type_and_value();
         write!(f, "{}={}", ftype, value)
     }
@@ -1206,6 +1299,61 @@ pub enum SourceProtocol {
     }
 }
 
+#[cfg(feature = "format")]
+impl Display for SourceProtocol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceProtocol::Unknown => write!(f, "unknown")?,
+            SourceProtocol::Local => write!(f, "local")?,
+            SourceProtocol::File => write!(f, "file")?,
+            SourceProtocol::Ftp => write!(f, "ftp")?,
+            SourceProtocol::Http => write!(f, "http")?,
+            SourceProtocol::Https => write!(f, "https")?,
+            SourceProtocol::Rsync => write!(f, "rsync")?,
+            SourceProtocol::Bzr { fragment } => {
+                write!(f, "bzr")?;
+                if let Some(fragment) = fragment {
+                    write!(f, "({})", fragment as &dyn Fragment)?
+                }
+            },
+            SourceProtocol::Fossil { fragment } 
+            => {
+                write!(f, "fossil")?;
+                if let Some(fragment) = fragment {
+                    write!(f, "({})", fragment as &dyn Fragment)?
+                }
+            },
+            SourceProtocol::Git { 
+                fragment, signed } => 
+            {
+                write!(f, "git")?;
+                if let Some(fragment) = fragment {
+                    if *signed {
+                        write!(f, "({}, signed)", fragment as &dyn Fragment)?
+                    } else {
+                        write!(f, "({})", fragment as &dyn Fragment)?
+                    }
+                } else if *signed {
+                    write!(f, "(signed)")?
+                }
+            },
+            SourceProtocol::Hg { fragment } => {
+                write!(f, "hg")?;
+                if let Some(fragment) = fragment {
+                    write!(f, "({})", fragment as &dyn Fragment)?
+                }
+            },
+            SourceProtocol::Svn { fragment } => {
+                write!(f, "svn")?;
+                if let Some(fragment) = fragment {
+                    write!(f, "({})", fragment as &dyn Fragment)?
+                }
+            },
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Source {
     /// The local file name
@@ -1215,6 +1363,14 @@ pub struct Source {
     pub url: String,
     /// The protocol, and the protocol-specific data
     pub protocol: SourceProtocol,
+}
+
+#[cfg(feature = "format")]
+impl Display for Source {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{name: {}, url: {}, protocol: {}}}",
+                    self.name, self.url, self.protocol)
+    }
 }
 
 impl From<&str> for Source {
@@ -1365,8 +1521,98 @@ pub struct Pkgbuild {
     pub b2sums: Vec<Option<B2sum>>,
     pub pkgver_func: bool,
 }
+
+fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
+-> std::fmt::Result 
+where
+    I: IntoIterator<Item = &'a Option<Cksum>>
+{
+    let mut start = false;
+    for item in array.into_iter() {
+        if start {
+            write!(f, ", ")?
+        } else {
+            start = true
+        }
+        if let Some(cksum) = item {
+            write!(f, "{:08x}", cksum)?
+        } else {
+            write!(f, "SKIP")?
+        }
+    }
+    Ok(())
+}
+
+fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
+-> std::fmt::Result 
+where
+    I: IntoIterator<Item = &'a Option<S>>,
+    S: AsRef<[u8]> + 'a
+{
+
+    let mut start = false;
+    for item in array.into_iter() {
+        if start {
+            write!(f, ", ")?
+        } else {
+            start = true
+        }
+        if let Some(cksum) = item {
+            for byte in cksum.as_ref().iter() {
+                write!(f, "{:02x}", byte)?
+            }
+        } else {
+            write!(f, "SKIP")?
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "format")]
+impl Display for Pkgbuild {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{base: {}, pkgs: [", self.pkgbase)?;
+        format_write_array(f, &self.pkgs)?;
+        write!(f, "], version: {}, depends: [", self.version)?;
+        format_write_array(f, &self.depends)?;
+        write!(f, "], makedepends: [")?;
+        format_write_array(f, &self.makedepends)?;
+        write!(f, "], provides: [")?;
+        format_write_array(f, &self.provides)?;
+        write!(f, "], sources: [")?;
+        format_write_array(f, &self.sources)?;
+        write!(f, "], cksums: [")?;
+        format_write_cksum_array(f, &self.cksums)?;
+        write!(f, "], md5sums: [")?;
+        format_write_integ_sums_array(f, &self.md5sums)?;
+        write!(f, "], sha1sums: [")?;
+        format_write_integ_sums_array(f, &self.sha1sums)?;
+        write!(f, "], sha224sums: [")?;
+        format_write_integ_sums_array(f, &self.sha224sums)?;
+        write!(f, "], sha256sums: [")?;
+        format_write_integ_sums_array(f, &self.sha256sums)?;
+        write!(f, "], sha384sums: [")?;
+        format_write_integ_sums_array(f, &self.sha384sums)?;
+        write!(f, "], sha512sums: [")?;
+        format_write_integ_sums_array(f, &self.sha512sums)?;
+        write!(f, "], b2sums: [")?;
+        format_write_integ_sums_array(f, &self.b2sums)?;
+        write!(f, "], pkgver_func: {}}}", self.pkgver_func)
+    }
+}
+
 pub(crate) struct Pkgbuilds {
     entries: Vec<Pkgbuild>
+}
+
+#[cfg(feature = "format")]
+impl Display for Pkgbuilds {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for pkgbuild in self.entries.iter() {
+            writeln!(f, "{}", pkgbuild)?
+        }
+        Ok(())
+    }
 }
 
 impl TryFrom<&PackageParsing<'_>> for Package {
