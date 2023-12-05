@@ -1,4 +1,4 @@
-use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
+use std::{ffi::{OsString, OsStr}, fmt::Display, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
 
 use hex::FromHex;
 use libc::{PIPE_BUF, EAGAIN};
@@ -958,6 +958,369 @@ pub struct Package {
     pub provides: Vec<Provide>,
 }
 
+/// A VSC source fragment, declared in source as `url#fragment`, usually to 
+/// declare which `fragment` of the VSC source to use, e.g. commit, tag, etc
+pub trait Fragment {
+    /// Get the type string for the fragment, e.g. `revision`, `commit`, etc;
+    /// 
+    /// And get the actual value for the fragment, e.g. `master`, `main`, etc
+    fn get_type_and_value(&self) -> (&str, &str);
+
+    /// Get the type string for the fragment, e.g. `revision`, `commit`, etc;
+    fn get_type(&self) -> &str {
+        self.get_type_and_value().0
+    }
+
+    /// Get the actual value for the fragment, e.g. `master`, `main`, etc
+    fn get_value(&self) -> &str {
+        self.get_type_and_value().1
+    }
+
+    fn from_url(url: &str) -> (&str, Option<Self>)
+        where Self: Sized;
+}
+
+impl Display for dyn Fragment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (ftype, value) = self.get_type_and_value();
+        write!(f, "{}={}", ftype, value)
+    }
+}
+
+fn split_url_fragment(url: &str) -> Option<(&str, &str, &str)> {
+    if let Some((prefix, fragment)) = 
+        url.split_once('#') 
+    {
+        if let Some((key, value)) = 
+            fragment.split_once('=') 
+        {
+            return Some((prefix, key, value))
+        }
+    }
+    None
+}
+
+fn split_url_fragment_no_query(url: &str) -> Option<(&str, &str, &str)> {
+    if let Some((mut prefix, mut fragment)) = 
+        url.split_once('#') 
+    {
+        if let Some((nfragment, _)) = fragment.split_once('?'){
+            fragment = nfragment
+        }
+        if let Some((key, value)) = 
+            fragment.split_once('=') 
+        {
+            if let Some((url, _)) = prefix.split_once('?') {
+                prefix = url
+            }
+            return Some((prefix, key, value))
+        }
+    }
+    None
+}
+
+#[derive(Debug)]
+pub enum BzrSourceFragment {
+    Revision(String)
+}
+
+impl Fragment for BzrSourceFragment {
+    fn get_type_and_value(&self) -> (&str, &str) {
+        match self {
+            BzrSourceFragment::Revision(revision) 
+                => ("revision", revision),
+        }
+    }
+
+    fn from_url(url: &str) -> (&str, Option<Self>) {
+        if let Some((url, key, value)) = 
+            split_url_fragment(url) 
+        {
+            match key {
+                "revision" => (url, Some(Self::Revision(value.into()))),
+                _ => (url, None),
+            }
+        } else {
+            (url, None)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum FossilSourceFragment {
+    Branch(String),
+    Commit(String),
+    Tag(String)
+}
+
+impl Fragment for FossilSourceFragment {
+    fn get_type_and_value(&self) -> (&str, &str) {
+        match self {
+            FossilSourceFragment::Branch(branch) 
+                => ("branch", branch),
+            FossilSourceFragment::Commit(commit) 
+                => ("commit", commit),
+            FossilSourceFragment::Tag(tag) 
+                => ("tag", tag),
+        }
+    }
+
+    fn from_url(url: &str) -> (&str, Option<Self>) {
+        if let Some((url, key, value)) = 
+            split_url_fragment(url) 
+        {
+            match key {
+                "branch" => (url, Some(Self::Branch(value.into()))),
+                "commit" => (url, Some(Self::Commit(value.into()))),
+                "tag" => (url, Some(Self::Tag(value.into()))),
+                _ => (url, None),
+            }
+        } else {
+            (url, None)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum GitSourceFragment {
+    Branch(String),
+    Commit(String),
+    Tag(String)
+}
+
+impl Fragment for GitSourceFragment {
+    fn get_type_and_value(&self) -> (&str, &str) {
+        match self {
+            GitSourceFragment::Branch(branch) 
+                => ("branch", branch),
+            GitSourceFragment::Commit(commit) 
+                => ("commit", commit),
+            GitSourceFragment::Tag(tag) 
+                => ("tag", tag),
+        }
+    }
+    
+    fn from_url(url: &str) -> (&str, Option<Self>) {
+        if let Some((url, key, value)) = 
+            split_url_fragment_no_query(url) 
+        {
+            match key {
+                "branch" => (url, Some(Self::Branch(value.into()))),
+                "commit" => (url, Some(Self::Commit(value.into()))),
+                "tag" => (url, Some(Self::Tag(value.into()))),
+                _ => (url, None),
+            }
+        } else {
+            (url, None)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum HgSourceFragment {
+    Branch(String),
+    Revision(String),
+    Tag(String)
+}
+
+impl Fragment for HgSourceFragment {
+    fn get_type_and_value(&self) -> (&str, &str) {
+        match self {
+            HgSourceFragment::Branch(branch) 
+                => ("branch", branch),
+            HgSourceFragment::Revision(revision)
+                => ("revision", revision),
+            HgSourceFragment::Tag(tag) 
+                => ("tag", tag),
+        }
+    }
+
+    fn from_url(url: &str) -> (&str, Option<Self>) {
+        if let Some((url, key, value)) = 
+            split_url_fragment(url) 
+        {
+            match key {
+                "branch" => (url, Some(Self::Branch(value.into()))),
+                "revision" => (url, Some(Self::Revision(value.into()))),
+                "tag" => (url, Some(Self::Tag(value.into()))),
+                _ => (url, None),
+            }
+        } else {
+            (url, None)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SvnSourceFragment {
+    Revision(String)
+}
+
+impl Fragment for SvnSourceFragment {
+    fn get_type_and_value(&self) -> (&str, &str) {
+        match self {
+            SvnSourceFragment::Revision(revision) 
+                => ("revision", revision),
+        }
+    }
+
+    fn from_url(url: &str) -> (&str, Option<Self>) {
+        if let Some((url, key, value)) = 
+            split_url_fragment(url) 
+        {
+            match key {
+                "revision" => (url, Some(Self::Revision(value.into()))),
+                _ => (url, None),
+            }
+        } else {
+            (url, None)
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub enum SourceProtocol {
+    #[default]
+    Unknown,
+    Local,
+    File,
+    Ftp,
+    Http,
+    Https,
+    Rsync,
+    Bzr {
+        fragment: Option<BzrSourceFragment>,
+    },
+    Fossil {
+        fragment: Option<FossilSourceFragment>,
+    },
+    Git {
+        fragment: Option<GitSourceFragment>,
+        signed: bool
+    },
+    Hg {
+        fragment: Option<HgSourceFragment>,
+    },
+    Svn {
+        fragment: Option<SvnSourceFragment>,
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Source {
+    /// The local file name
+    pub name: String,
+    /// The actual URL, i.e. the one used to initialize connections, could be
+    /// different from the one defined in `source=()`
+    pub url: String,
+    /// The protocol, and the protocol-specific data
+    pub protocol: SourceProtocol,
+}
+
+impl From<&str> for Source {
+    fn from(definition: &str) -> Self {
+        let mut source = Self::default();
+        let mut url = match definition.split_once("::") {
+            Some((name, url)) => {
+                source.name = name.into();
+                url
+            },
+            None => definition,
+        };
+        source.protocol = 
+            if let Some((mut proto, _)) = 
+                url.split_once("://") 
+            {
+                if let Some((proto_actual, _)) = 
+                    proto.split_once('+') 
+                {
+                    // E.g. git+https://github.com/7Ji/ampart.git
+                    // proto would be git, its length is 3, then url would be
+                    // https://github.com/7Ji/ampart.git, it's a substr from 4
+                    url = &url[proto_actual.len() + 1..];
+                    proto = proto_actual;
+                };
+                match proto {
+                    "file" => SourceProtocol::File,
+                    "ftp" => SourceProtocol::Ftp,
+                    "http" => SourceProtocol::Http,
+                    "https" => SourceProtocol::Https,
+                    "rsync" => SourceProtocol::Rsync,
+                    "bzr" => {
+                        let (urln, fragment) 
+                            = BzrSourceFragment::from_url(url);
+                        url = urln;
+                        SourceProtocol::Bzr { fragment }
+                    },
+                    "fossil" => {
+                        let (urln, fragment) 
+                            = FossilSourceFragment::from_url(url);
+                        url = urln;
+                        SourceProtocol::Fossil { fragment }
+                    },
+                    "git" => {
+                        let (urln, fragment) 
+                            = GitSourceFragment::from_url(url);
+                        url = urln;
+                        SourceProtocol::Git { fragment, 
+                            signed: url.contains("?signed")}
+                    },
+                    "hg" => {
+                        let (urln, fragment) 
+                            = HgSourceFragment::from_url(url);
+                        url = urln;
+                        SourceProtocol::Hg { fragment }
+
+                    },
+                    "svn" => {
+                        let (urln, fragment) 
+                            = SvnSourceFragment::from_url(url);
+                        url = urln;
+                        SourceProtocol::Svn { fragment }
+
+                    },
+                    _ => {
+                        log::warn!("Unknown protocol '{}'", proto);
+                        SourceProtocol::Unknown
+                    }
+                }
+            } else { // No scheme, local file
+                SourceProtocol::Local
+            };
+        if source.name.is_empty() {
+            match url.rsplit_once('/') {
+                Some((_, name)) => source.name = name.into(),
+                None => source.name = url.into(),
+            }
+            match &source.protocol {
+                SourceProtocol::Bzr { fragment: _ } => 
+                    if let Some((_, name)) = 
+                        source.name.split_once("lp:") 
+                    {
+                        source.name = name.into()
+                    },
+                SourceProtocol::Fossil { fragment: _ } => 
+                    source.name.push_str(".fossil"),
+                SourceProtocol::Git { fragment: _, signed: _ } => 
+                    if let Some(name) = source.name.strip_suffix(".git") {
+                        let len = name.len();
+                        source.name.truncate(len);
+                        source.name.shrink_to(len)
+                    }
+                _ => (),
+            }
+        }
+        source.url = url.into();
+        source
+    }
+}
+
+impl From<&[u8]> for Source {
+    fn from(value: &[u8]) -> Self {
+        String::from_utf8_lossy(value).as_ref().into()
+    }
+}
+
 pub type Cksum = u32;
 pub type Md5sum = [u8; 16];
 pub type Sha1sum = [u8; 20];
@@ -966,6 +1329,21 @@ pub type Sha256sum = [u8; 32];
 pub type Sha384sum = [u8; 48];
 pub type Sha512sum = [u8; 64];
 pub type B2sum = [u8; 64];
+
+/// A source with its integrity checksum. Do note that each source could have
+/// multiple integrity checksums defined. For efficiency this is not directly
+/// returned in the `Pkgbuild`. 
+pub struct SourceWithInteg {
+    pub source: Source,
+    pub cksum: Option<Cksum>,
+    pub md5sum: Option<Md5sum>,
+    pub sha1sum: Option<Sha1sum>,
+    pub sha224sum: Option<Sha224sum>,
+    pub sha256sum: Option<Sha256sum>,
+    pub sha384sum: Option<Sha384sum>,
+    pub sha512sum: Option<Sha512sum>,
+    pub b2sum: Option<B2sum>
+}
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug)]
@@ -976,7 +1354,7 @@ pub struct Pkgbuild {
     pub depends: Vec<Dependency>,
     pub makedepends: Vec<Dependency>,
     pub provides: Vec<Provide>,
-    pub sources: Vec<String>,
+    pub sources: Vec<Source>,
     pub cksums: Vec<Option<Cksum>>,
     pub md5sums: Vec<Option<Md5sum>>,
     pub sha1sums: Vec<Option<Sha1sum>>,
@@ -1006,11 +1384,6 @@ impl TryFrom<&PackageParsing<'_>> for Package {
         let pkgname = String::from_utf8_lossy(value.pkgname).into();
         Ok(Self { pkgname, depends, provides })
     }
-}
-
-fn vec_string_from_vec_slice_u8(original: &Vec<&[u8]>) -> Vec<String> {
-    original.iter().map(|item|
-        string_from_slice_u8(item)).collect()
 }
 
 fn cksum_from_raw(raw: &&[u8]) -> Option<u32> {
@@ -1070,7 +1443,8 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             depends,
             makedepends,
             provides,
-            sources: vec_string_from_vec_slice_u8(&value.sources),
+            sources: value.sources.iter().map(|source|
+                (*source).into()).collect(),
             cksums: cksums_from_raws(&value.cksums),
             md5sums: hash_sums_from_hexes(&value.md5sums),
             sha1sums: hash_sums_from_hexes(&value.sha1sums),
