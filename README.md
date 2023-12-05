@@ -4,9 +4,9 @@ A naive [PKGBUILD](https://wiki.archlinux.org/title/PKGBUILD) parser for Rust. U
 
 This is **naive** in the sense that it does not understand `PKGBUILD`s natively, nor does it care what the `PKGBUILD`s do. Instead, it uses a Bash instance to run a highly efficient script dynamically generated from [our template](src/parse_pkgbuild.bash), and feeds the list of `PKGBUILD`s that need to be parsed into the script's stdin, then read and parse the script's stdout which is in our internal compact format.
 
-On a test sample of 47 `PKGBUILD`s all with split packages, the test `main` executable took only ~310 milliseconds to assemble the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~50 milliseconds. It should scale pretty well for a non-trivial repo hoster.
+On a test against ArchLinuxARM's all 424 official `PKGBUILD`s, the test `main` executable took ~2.25 seconds to assemble the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~5.3 milliseconds. It should scale pretty well for a non-trivial repo hoster.
 
-I've yet not find a method to dump all of ArchLinux's official `PKGBUILD`s without effectively DDoSing their Gitlab server for a big enough test sample. But for a simple calculation, for all of the current 12435 PKGBUILDs, this should take ~621.750 seconds (12435 * 50 / 1000) to parse in a single thread, and would take shorter if threaded. Compared to that, for a simple repo that only hosts a couple hundred of PKGBUILDs, you'll only need ~1 second single-threaded.
+I've yet not find a method to dump all of ArchLinux's official `PKGBUILD`s without effectively DDoSing their Gitlab server for a big enough test sample. But for a simple calculation, for all of the current 12435 PKGBUILDs, this should take ~65.9055 seconds (12435 * 5.3 / 1000) to parse in a single thread, and would take shorter if threaded. Compared to that, for a simple repo that only hosts a couple hundred of PKGBUILDs, you'll only need ~1 second single-threaded.
 
 ## Not for AUR helper
 
