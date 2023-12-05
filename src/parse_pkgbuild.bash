@@ -16,6 +16,17 @@ dump_array_with_optional_arch() { #1: var name, 2: report name
     echo "$2:${item}"
   done
 }
+extract_package_vars() { #1 suffix
+  local ifs_stored="${IFS}"
+  IFS=$'\n'
+  local lines=($(declare -f package"$1"))
+  IFS="${ifs_stored}"
+  for line in "${lines[@]:2:$((${#lines[@]}-3))}"; do 
+    if [[ "${line}" =~ (depends|provides)'=('* ]]; then
+      eval "${line}"
+    fi
+  done
+}
 while read -r line; do
   source "${line}"
   echo "[PKGBUILD]"
@@ -38,12 +49,12 @@ while read -r line; do
   if [[ $(type -t pkgver) == 'function' ]]; then echo y; else echo n; fi
   unset -f pkgver package
   unset -v {depends,provides}{,_"${CARCH}"}
-  eval $(declare -f package | sed --quiet 's/ \+\(depends=.\+\);/\1/p; s/ \+\(provides=.\+\);/\1/p')
+  extract_package_vars 
   dump_array_with_optional_arch depends dep_"${pkgbase}"
   dump_array_with_optional_arch provides provide_"${pkgbase}"
   for item in "${pkgname[@]}"; do
     unset -v {depends,provides}{,_"${CARCH}"}
-    eval $(declare -f package_"${item}" | sed --quiet 's/ \+\(depends=.\+\);/\1/p; s/ \+\(provides=.\+\);/\1/p')
+    extract_package_vars _"${item}"
     dump_array_with_optional_arch depends dep_"${item}"
     dump_array_with_optional_arch provides provide_"${item}"
   done
