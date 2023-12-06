@@ -1582,7 +1582,7 @@ fn split_url_fragment_no_query(url: &str) -> Option<(&str, &str, &str)> {
     None
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BzrSourceFragment {
     Revision(String)
 }
@@ -1609,7 +1609,7 @@ impl Fragment for BzrSourceFragment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FossilSourceFragment {
     Branch(String),
     Commit(String),
@@ -1644,7 +1644,7 @@ impl Fragment for FossilSourceFragment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GitSourceFragment {
     Branch(String),
     Commit(String),
@@ -1679,7 +1679,7 @@ impl Fragment for GitSourceFragment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HgSourceFragment {
     Branch(String),
     Revision(String),
@@ -1714,7 +1714,7 @@ impl Fragment for HgSourceFragment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SvnSourceFragment {
     Revision(String)
 }
@@ -1741,7 +1741,7 @@ impl Fragment for SvnSourceFragment {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum SourceProtocol {
     #[default]
     Unknown,
@@ -1843,7 +1843,7 @@ impl SourceProtocol {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Source {
     /// The local file name
     pub name: String,
@@ -2027,6 +2027,22 @@ pub struct SourceWithInteg {
     pub b2sum: Option<B2sum>
 }
 
+impl From<&Source> for SourceWithInteg {
+    fn from(value: &Source) -> Self {
+        Self {
+            source: value.clone(),
+            cksum: None,
+            md5sum: None,
+            sha1sum: None,
+            sha224sum: None,
+            sha256sum: None,
+            sha384sum: None,
+            sha512sum: None,
+            b2sum: None,
+        }
+    }
+}
+
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug)]
 pub struct Pkgbuild {
@@ -2131,7 +2147,7 @@ impl Display for Pkgbuild {
     }
 }
 
-pub(crate) struct Pkgbuilds {
+pub struct Pkgbuilds {
     entries: Vec<Pkgbuild>
 }
 
@@ -2243,5 +2259,109 @@ impl TryFrom<&PkgbuildsParsing<'_>> for Pkgbuilds {
             entries.push(entry.try_into()?)
         }
         Ok(Self {entries})
+    }
+}
+
+impl Pkgbuild {
+    /// Get sources with the integrity checksums attached, i.e. get a `Vec` of 
+    /// `SourceWithInteg`, with each of them containing a cloned `Source`, and 
+    /// cloned integrity checksums.
+    /// 
+    /// This is useful if you want to download and prepare the sources in `Rust`
+    /// world directly without relying on `makepkg`'s internal implementation.
+    /// 
+    /// Note however, the result would always take the full space for all 
+    /// variants of checksums, even if you've disabled the parsing in the
+    /// `ParserScript`
+    pub fn get_sources_with_integ(&self) -> Vec<SourceWithInteg> {
+        let mut sources: Vec<SourceWithInteg> = Vec::new();
+        for source in self.sources.iter() {
+            sources.push(source.into())
+        }
+        for (source, cksum) in 
+            sources.iter_mut().zip(self.cksums.iter()) 
+        {
+            source.cksum = *cksum;
+        }
+        for (source, md5sum) in 
+            sources.iter_mut().zip(self.md5sums.iter()) 
+        {
+            source.md5sum = *md5sum;
+        }
+        for (source, sha1sum) in 
+            sources.iter_mut().zip(self.sha1sums.iter()) 
+        {
+            source.sha1sum = *sha1sum;
+        }
+        for (source, sha224sum) in 
+            sources.iter_mut().zip(self.sha224sums.iter()) 
+        {
+            source.sha224sum = *sha224sum;
+        }
+        for (source, sha256sum) in 
+            sources.iter_mut().zip(self.sha256sums.iter()) 
+        {
+            source.sha256sum = *sha256sum;
+        }
+        for (source, sha384sum) in 
+            sources.iter_mut().zip(self.sha384sums.iter()) 
+        {
+            source.sha384sum = *sha384sum;
+        }
+        for (source, sha512sum) in 
+            sources.iter_mut().zip(self.sha512sums.iter()) 
+        {
+            source.sha512sum = *sha512sum;
+        }
+        for (source, b2sum) in 
+            sources.iter_mut().zip(self.b2sums.iter()) 
+        {
+            source.b2sum = *b2sum;
+        }
+        sources
+    }
+}
+
+impl Pkgbuilds {
+    /// Get each `Pkgbuild`'s sources with the integrity checksums attached, 
+    /// i.e. get a `Vec` of `Vec` of `SourceWithInteg`, with each of them 
+    /// containing a cloned `Source`, and cloned integrity checksums.
+    /// 
+    /// This is a shortcut that calls `get_sources_with_integ()` for each entry
+    /// `Pkgbuild`s and collects the results into a `Vec`.
+    /// 
+    /// This is useful if you want to download and prepare the sources in `Rust`
+    /// world directly without relying on `makepkg`'s internal implementation.
+    /// 
+    /// Note however, the result would always take the full space for all 
+    /// variants of checksums, even if you've disabled the parsing in the
+    /// `ParserScript`
+    pub fn get_each_sources_with_integ(&self) -> Vec<Vec<SourceWithInteg>> {
+        self.entries.iter().map(|pkgbuild|
+            pkgbuild.get_sources_with_integ()).collect()
+    }
+
+    /// Get all `Pkgbuild`'s sources with the integrity checksums attached,
+    /// i.e. get a `Vec` of `SourceWithInteg`, with each of them 
+    /// containing a cloned `Source`, and cloned integrity checksums.
+    /// 
+    /// This is a shortcut that calls `get_sources_with_integ()` for each entry
+    /// `Pkgbuild`s and take out all of the results to collect them into a giant
+    /// signle `Vec`.
+    /// 
+    /// This is useful if you want to download and prepare the sources in `Rust`
+    /// world directly without relying on `makepkg`'s internal implementation.
+    /// 
+    /// Note however, the result would always take the full space for all 
+    /// variants of checksums, even if you've disabled the parsing in the
+    /// `ParserScript`
+    pub fn get_all_sources_with_integ(&self) -> Vec<SourceWithInteg> {
+        let mut sources = Vec::new();
+        for pkgbuild in self.entries.iter() {
+            let mut sources_this = 
+                pkgbuild.get_sources_with_integ();
+            sources.append(&mut sources_this);
+        }
+        sources
     }
 }
