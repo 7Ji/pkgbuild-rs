@@ -162,42 +162,42 @@ pub struct ParserScriptBuilder {
     /// Should the `cksums` array be dumped.
     /// 
     /// Default: `true`
-    pub cksum: bool,
+    pub cksums: bool,
 
     /// Should the `md5sums` array be dumped.
     /// 
     /// Default: `true`
-    pub md5sum: bool,
+    pub md5sums: bool,
 
     /// Should the `sha1sums` array be dumped.
     /// 
     /// Default: `true`
-    pub sha1sum: bool,
+    pub sha1sums: bool,
 
     /// Should the `sha224sums` array be dumped.
     /// 
     /// Default: `true`
-    pub sha224sum: bool,
+    pub sha224sums: bool,
 
     /// Should the `sha256sums` array be dumped.
     /// 
     /// Default: `true`
-    pub sha256sum: bool,
+    pub sha256sums: bool,
 
     /// Should the `sha384sums` array be dumped.
     /// 
     /// Default: `true`
-    pub sha384sum: bool,
+    pub sha384sums: bool,
 
     /// Should the `sha512sums` array be dumped.
     /// 
     /// Default: `true`
-    pub sha512sum: bool,
+    pub sha512sums: bool,
 
     /// Should the `cksums` array be dumped.
     /// 
     /// Default: `true`
-    pub b2sum: bool,
+    pub b2sums: bool,
 
     /// Should the parser detect if a `pkgver()` function exists for the parsed
     /// `PKGBUILD`
@@ -274,14 +274,14 @@ impl Default for ParserScriptBuilder {
             makedepends: true,
             provides: true,
             source: true,
-            cksum: true,
-            md5sum: true,
-            sha1sum: true,
-            sha224sum: true,
-            sha256sum: true,
-            sha384sum: true,
-            sha512sum: true,
-            b2sum: true,
+            cksums: true,
+            md5sums: true,
+            sha1sums: true,
+            sha224sums: true,
+            sha256sums: true,
+            sha384sums: true,
+            sha512sums: true,
+            b2sums: true,
             pkgver_func: true,
             package_depends: true,
             package_makedepends: true, 
@@ -324,6 +324,138 @@ impl ParserScriptBuilder {
         -> &mut Self 
     {
         self.makepkg_config = config.into();
+        self
+    }
+
+    /// Set whether the `pkgbase` should be dumped from `PKGBUILD`
+    pub fn set_pkgbase(&mut self, pkgbase: bool) -> &mut Self {
+        self.pkgbase = pkgbase;
+        self
+    }
+
+    /// Set whether the `pkgname` array should be dumped from `PKGBUILD`.
+    /// 
+    /// Disabling this would also cause every `PKGBUILD` to be treated as if 
+    /// it is not a split-package `PKGBUILD`
+    pub fn set_pkgname(&mut self, pkgname: bool) -> &mut Self {
+        self.pkgname = pkgname;
+        self
+    }
+
+    /// Set whether the `pkgver` should be dumped from `PKGBUILD`
+    /// 
+    /// If disabled, the result field `version` would always have an empty 
+    /// `pkgver` field
+    pub fn set_pkgver(&mut self, pkgver: bool) -> &mut Self {
+        self.pkgver = pkgver;
+        self
+    }
+
+    /// Set whether the `pkgrel` should be dumped from `PKGBUILD`
+    /// 
+    /// If disabled, the result field `version` would always have an empty 
+    /// `pkgrel` field
+    pub fn set_pkgrel(&mut self, pkgrel: bool) -> &mut Self {
+        self.pkgrel = pkgrel;
+        self
+    }
+
+    /// Set whether the `epoch` should be dumped from `PKGBUILD`
+    /// 
+    /// If disabled, the result field `version` would always have an empty 
+    /// `epoch` field
+    pub fn set_epoch(&mut self, epoch: bool) -> &mut Self {
+        self.epoch = epoch;
+        self
+    }
+
+    /// Set whether the arch-specific array should be appended to the generic
+    /// array when dumping `source`, `depends`, etc
+    /// 
+    /// The arch should be set as `CARCH` in the `makepkg_conf`
+    /// 
+    /// If disabled, the parsing result is as if we're parsing on an unkown
+    /// architecture.
+    pub fn set_arch_specific(&mut self, arch_specific: bool) -> &mut Self {
+        self.arch_specific = arch_specific;
+        self
+    }
+
+    /// Set whether the `depends` array should be dumped
+    pub fn set_depends(&mut self, depends: bool) -> &mut Self {
+        self.depends = depends;
+        self
+    }
+
+    /// Set whether the `makedepends` array should be dumped
+    pub fn set_makedepends(&mut self, makedepends: bool) -> &mut Self {
+        self.makedepends = makedepends;
+        self
+    }
+
+    /// Set whether the `provides` array should be dumped
+    pub fn set_provides(&mut self, provides: bool) -> &mut Self {
+        self.provides = provides;
+        self
+    }
+
+    /// Set whether the `cksums` array should be dumped
+    pub fn set_cksums(&mut self, cksums: bool) -> &mut Self {
+        self.cksums = cksums;
+        self
+    }
+
+    pub fn set_md5sums(&mut self, md5sums: bool) -> &mut Self {
+        self.md5sums = md5sums;
+        self
+    }
+
+    pub fn set_sha1sums(&mut self, sha1sums: bool) -> &mut Self {
+        self.sha1sums = sha1sums;
+        self
+    }
+
+    pub fn set_sha224sums(&mut self, sha224sums: bool) -> &mut Self {
+        self.sha224sums = sha224sums;
+        self
+    }
+
+    pub fn set_sha256sums(&mut self, sha256sums: bool) -> &mut Self {
+        self.sha256sums = sha256sums;
+        self
+    }
+
+    pub fn set_sha384sums(&mut self, sha384sums: bool) -> &mut Self {
+        self.sha384sums = sha384sums;
+        self
+    }
+
+    pub fn set_sha512sums(&mut self, sha512sums: bool) -> &mut Self {
+        self.sha512sums = sha512sums;
+        self
+    }
+
+    pub fn set_b2sums(&mut self, b2sums: bool) -> &mut Self {
+        self.b2sums = b2sums;
+        self
+    }
+
+    pub fn set_pkgver_func(&mut self, pkgver_func: bool) -> &mut Self {
+        self.pkgver_func = pkgver_func;
+        self
+    }
+
+    /// Set whether the package-specific depends array should be dumped
+    pub fn set_package_depends(&mut self, package_depends: bool) -> &mut Self {
+        self.package_depends = package_depends;
+        self
+    }
+
+    /// Set whether the package-specific makedepends array should be dumped
+    pub fn set_package_makedepends(&mut self, package_makedepends: bool) 
+        -> &mut Self 
+    {
+        self.package_makedepends = package_makedepends;
         self
     }
 
@@ -392,35 +524,35 @@ impl ParserScriptBuilder {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" source source\n")?
         }
-        if self.cksum {
+        if self.cksums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" cksums ck\n")?
         }
-        if self.md5sum {
+        if self.md5sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" md5sums md5\n")?
         }
-        if self.sha1sum {
+        if self.sha1sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" sha1sums sha1\n")?
         }
-        if self.sha224sum {
+        if self.sha224sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" sha224sums sha224\n")?
         }
-        if self.sha256sum {
+        if self.sha256sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" sha256sums sha256\n")?
         }
-        if self.sha384sum {
+        if self.sha384sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" sha384sums sha384\n")?
         }
-        if self.sha512sum {
+        if self.sha512sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" sha512sums sha512\n")?
         }
-        if self.b2sum {
+        if self.b2sums {
             writer.write_all(func_dump_array)?;
             writer.write_all(b" b2sums b2\n")?
         }
