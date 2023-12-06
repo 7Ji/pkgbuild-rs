@@ -26,7 +26,7 @@ cargo run --example printsrcinfo [path to pkgbuild]
 There're a few structs in the library that would need to be created and used to parse `PKGBUILD`s.
 
 ### Parser
-A `Parser` is a combination of a `ParserScript` and `ParserOptions` that is ready to take `PKGBUILDs` as its input to parse. Calling `parse_one()` and `parse_multi()` on it would use the underlying `ParserScript` to parse the defined list of paths of `PKGBUILD`s. The `parse_one()` method has an optional arg, and would default of `PKGBUILD` if it's not set.
+A `Parser` is a combination of a `ParserScript` and `ParserOptions` that is ready to take `PKGBUILDs` as its input to parse. Calling `parse_one()` and `parse_multi()` on it would use the underlying `ParserScript` to parse the defined list of paths of `PKGBUILD`s. The `parse_one()` method has an optional arg, and would default to `PKGBUILD` if it's not set.
 ```Rust
 // Create a `Parser` instance
 let parser = Parser::new().expect("Failed to create parser");
@@ -45,7 +45,7 @@ let pkgbuild = parse_one(None).expect("Failed to parse PKGBUILD");
 let pkgbuilds = parse_multi(["/tmp/PKGBUILD/ampart", "/tmp/ampart-git/PKGBUILD", "/tmp/chromium/PKGBUILD"]).expect("Failed to parse multiple PKGBUILDs");
 ```
 
-Please note the main method is `parse_multi()`, and `parse_one()` is only a wrapper around the `parse_multi()` method.
+Please note the main method is `parse_multi()`, and `parse_one()` is only a wrapper around the `parse_multi()` method. If you want to parse multiple `PKGBUILD`s, always use the `parse_multi()` method, as that would only spawn the script once.
 
 ### ParserScript
 
