@@ -1815,6 +1815,10 @@ impl From<&[u8]> for Source {
 }
 
 impl Source {
+    /// Create a new `Source` from the definition used in `PKGBUILD`
+    pub fn new<S: AsRef<str>>(definition: S) -> Self {
+        definition.as_ref().into()
+    }
     /// Generate name from the url
     pub fn get_url_name(&self) -> String {
         let mut name: String = 
