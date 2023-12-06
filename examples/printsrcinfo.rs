@@ -62,6 +62,7 @@ fn main() {
     print_array_integ_cksum(&pkgbuild.sha512sums, "sha512sums");
     print_array_integ_cksum(&pkgbuild.b2sums, "b2sums");
     for pkg in pkgbuild.pkgs {
+        println!();
         println!("pkgname = {}", pkg.pkgname);
         print_array(&pkg.depends, "depends");
         print_array(&pkg.provides, "provides");
