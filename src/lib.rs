@@ -1609,6 +1609,12 @@ impl Fragment for BzrSourceFragment {
     }
 }
 
+impl Display for BzrSourceFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Fragment).fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum FossilSourceFragment {
     Branch(String),
@@ -1641,6 +1647,12 @@ impl Fragment for FossilSourceFragment {
         } else {
             (url, None)
         }
+    }
+}
+
+impl Display for FossilSourceFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Fragment).fmt(f)
     }
 }
 
@@ -1679,6 +1691,12 @@ impl Fragment for GitSourceFragment {
     }
 }
 
+impl Display for GitSourceFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Fragment).fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum HgSourceFragment {
     Branch(String),
@@ -1714,6 +1732,12 @@ impl Fragment for HgSourceFragment {
     }
 }
 
+impl Display for HgSourceFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Fragment).fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum SvnSourceFragment {
     Revision(String)
@@ -1738,6 +1762,12 @@ impl Fragment for SvnSourceFragment {
         } else {
             (url, None)
         }
+    }
+}
+
+impl Display for SvnSourceFragment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Fragment).fmt(f)
     }
 }
 
@@ -1783,14 +1813,14 @@ impl Display for SourceProtocol {
             SourceProtocol::Bzr { fragment } => {
                 write!(f, "bzr")?;
                 if let Some(fragment) = fragment {
-                    write!(f, "({})", fragment as &dyn Fragment)?
+                    write!(f, "({})", fragment)?
                 }
             },
             SourceProtocol::Fossil { fragment } 
             => {
                 write!(f, "fossil")?;
                 if let Some(fragment) = fragment {
-                    write!(f, "({})", fragment as &dyn Fragment)?
+                    write!(f, "({})", fragment)?
                 }
             },
             SourceProtocol::Git { 
@@ -1799,9 +1829,9 @@ impl Display for SourceProtocol {
                 write!(f, "git")?;
                 if let Some(fragment) = fragment {
                     if *signed {
-                        write!(f, "({}, signed)", fragment as &dyn Fragment)?
+                        write!(f, "({}, signed)", fragment)?
                     } else {
-                        write!(f, "({})", fragment as &dyn Fragment)?
+                        write!(f, "({})", fragment)?
                     }
                 } else if *signed {
                     write!(f, "(signed)")?
@@ -1810,13 +1840,13 @@ impl Display for SourceProtocol {
             SourceProtocol::Hg { fragment } => {
                 write!(f, "hg")?;
                 if let Some(fragment) = fragment {
-                    write!(f, "({})", fragment as &dyn Fragment)?
+                    write!(f, "({})", fragment)?
                 }
             },
             SourceProtocol::Svn { fragment } => {
                 write!(f, "svn")?;
                 if let Some(fragment) = fragment {
-                    write!(f, "({})", fragment as &dyn Fragment)?
+                    write!(f, "({})", fragment)?
                 }
             },
         }
