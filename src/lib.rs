@@ -1692,6 +1692,25 @@ impl Display for SourceProtocol {
     }
 }
 
+impl SourceProtocol {
+    fn get_proto_str(&self) -> &'static str {
+        match self {
+            SourceProtocol::Unknown => "unknown",
+            SourceProtocol::Local => "local",
+            SourceProtocol::File => "file",
+            SourceProtocol::Ftp => "ftp",
+            SourceProtocol::Http => "http",
+            SourceProtocol::Https => "https",
+            SourceProtocol::Rsync => "rsync",
+            SourceProtocol::Bzr { fragment: _ } => "bzr",
+            SourceProtocol::Fossil { fragment: _ } => "fossil",
+            SourceProtocol::Git { fragment: _, signed: _ } => "git",
+            SourceProtocol::Hg { fragment: _ } => "hg",
+            SourceProtocol::Svn { fragment: _ } => "svn",
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Source {
     /// The local file name
@@ -1781,30 +1800,10 @@ impl From<&str> for Source {
             } else { // No scheme, local file
                 SourceProtocol::Local
             };
-        if source.name.is_empty() {
-            match url.rsplit_once('/') {
-                Some((_, name)) => source.name = name.into(),
-                None => source.name = url.into(),
-            }
-            match &source.protocol {
-                SourceProtocol::Bzr { fragment: _ } => 
-                    if let Some((_, name)) = 
-                        source.name.split_once("lp:") 
-                    {
-                        source.name = name.into()
-                    },
-                SourceProtocol::Fossil { fragment: _ } => 
-                    source.name.push_str(".fossil"),
-                SourceProtocol::Git { fragment: _, signed: _ } => 
-                    if let Some(name) = source.name.strip_suffix(".git") {
-                        let len = name.len();
-                        source.name.truncate(len);
-                        source.name.shrink_to(len)
-                    }
-                _ => (),
-            }
-        }
         source.url = url.into();
+        if source.name.is_empty() {
+            source.name = source.get_url_name()
+        }
         source
     }
 }
@@ -1812,6 +1811,59 @@ impl From<&str> for Source {
 impl From<&[u8]> for Source {
     fn from(value: &[u8]) -> Self {
         String::from_utf8_lossy(value).as_ref().into()
+    }
+}
+
+impl Source {
+    /// Generate name from the url
+    pub fn get_url_name(&self) -> String {
+        let mut name: String = 
+            match self.url.rsplit_once('/') {
+                Some((_, name)) => name.into(),
+                None => (&self.url).into(),
+            };
+        match &self.protocol {
+            SourceProtocol::Bzr { fragment: _ } => 
+                if let Some((_, rname)) = name.split_once("lp:") 
+                {
+                    name = rname.into()
+                },
+            SourceProtocol::Fossil { fragment: _ } => 
+                name.push_str(".fossil"),
+            SourceProtocol::Git { fragment: _, signed: _ } => 
+                if let Some(lname) = name.strip_suffix(".git") {
+                    let len = lname.len();
+                    name.truncate(len);
+                    name.shrink_to(len)
+                }
+            _ => (),
+        }
+        name
+    }
+
+    /// Convert to the format `PKGBUILD` uses in the `source` array
+    pub fn get_pkgbuild_source(&self) -> String {
+        let mut raw = String::new();
+        let auto_name = self.get_url_name();
+        if auto_name != self.name {
+            raw.push_str(&self.name);
+            raw.push_str("::")
+        }
+        let proto_url = match self.url.split_once("://") {
+            Some((proto, _)) => proto,
+            None => "",
+        };
+        let proto_actual = self.protocol.get_proto_str();
+        match self.protocol {
+            SourceProtocol::Unknown | SourceProtocol::Local => (),
+            _ =>
+                if proto_actual != proto_url {
+                    raw.push_str(proto_actual);
+                    raw.push('+');
+                }
+        }
+        raw.push_str(&self.url);
+        raw
     }
 }
 
