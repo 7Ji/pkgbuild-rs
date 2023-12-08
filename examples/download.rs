@@ -1,3 +1,5 @@
+use pkgbuild::pkgbuild::SourceProtocol;
+
 fn main() {
     let sources = pkgbuild::parse_one(
         std::env::args_os().nth(1)).unwrap().get_sources_with_integ();
@@ -8,33 +10,33 @@ fn main() {
         let source = &source_with_integ.source;
         println!("=> Downloading '{}' from '{}'...", source.name, source.url);
         match &source.protocol {
-            pkgbuild::SourceProtocol::Unknown => 
+            SourceProtocol::Unknown => 
                 println!(" -> Impossible to download, unknown protocol"),
-            pkgbuild::SourceProtocol::Local =>
+            SourceProtocol::Local =>
                 println!(" -> Skipped downloading for local file"),
-            pkgbuild::SourceProtocol::File => 
+            SourceProtocol::File => 
                 println!(" -> File cloning..."),
-            pkgbuild::SourceProtocol::Ftp => 
+            SourceProtocol::Ftp => 
                 println!(" -> FTP downloading..."),
-            pkgbuild::SourceProtocol::Http => 
+            SourceProtocol::Http => 
                 println!(" -> HTTP downloading..."),
-            pkgbuild::SourceProtocol::Https => 
+            SourceProtocol::Https => 
                 println!(" -> HTTPS downloading..."),
-            pkgbuild::SourceProtocol::Rsync => 
+            SourceProtocol::Rsync => 
                 println!(" -> rsync downloading..."),
-            pkgbuild::SourceProtocol::Bzr { fragment } => 
+            SourceProtocol::Bzr { fragment } => 
                 if let Some(fragment) = fragment {
                     println!(" -> Bzr cloning ({})...", fragment)
                 } else {
                     println!(" -> Bzr cloning...")
                 },
-            pkgbuild::SourceProtocol::Fossil { fragment } => 
+            SourceProtocol::Fossil { fragment } => 
                 if let Some(fragment) = fragment {
                     println!(" -> Fossil cloning ({})...", fragment)
                 } else {
                     println!(" -> Fossil cloning...")
                 },
-            pkgbuild::SourceProtocol::Git { fragment, signed } => 
+            SourceProtocol::Git { fragment, signed } => 
             {
                 if let Some(fragment) = fragment {
                     let signed = if *signed {", signed"} else {""};
@@ -45,13 +47,13 @@ fn main() {
                     println!(" -> Git cloneing...")
                 }
             },
-            pkgbuild::SourceProtocol::Hg { fragment } => 
+            SourceProtocol::Hg { fragment } => 
                 if let Some(fragment) = fragment {
                     println!(" -> Hg cloning ({})...", fragment)
                 } else {
                     println!(" -> Hg cloning...")
                 },
-            pkgbuild::SourceProtocol::Svn { fragment } =>
+            SourceProtocol::Svn { fragment } =>
                 if let Some(fragment) = fragment {
                     println!(" -> Svn cloning ({})...", fragment)
                 } else {
