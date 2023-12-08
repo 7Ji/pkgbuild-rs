@@ -17,6 +17,7 @@ tempfile = "3.8"
 [features]
 default = []
 format = []
+nothread = []
 serde = ["dep:serde", "dep:serde_bytes"]
 
 [[example]]

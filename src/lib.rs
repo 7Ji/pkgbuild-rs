@@ -1,8 +1,6 @@
-use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
+use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}};
 
 use hex::FromHex;
-use libc::{PIPE_BUF, EAGAIN};
-use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
 use tempfile::NamedTempFile;
 #[cfg(feature = "format")]
 use std::fmt::{Display, Formatter};
@@ -10,6 +8,14 @@ use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "serde")]
 mod serde_optional_bytes_arrays;
+#[cfg(feature = "nothread")]
+use libc::{PIPE_BUF, EAGAIN};
+#[cfg(feature = "nothread")]
+use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
+#[cfg(feature = "nothread")]
+use std::os::fd::AsRawFd;
+#[cfg(not(feature = "nothread"))]
+use std::thread::spawn;
 
 #[derive(Debug)]
 pub enum Error {
@@ -26,6 +32,7 @@ pub enum Error {
     ChildStdioIncomplete,
     /// Some thread paniked and not joinable, this should not happen in our 
     /// code explicitly
+    #[cfg(not(feature = "nothread"))]
     ThreadUnjoinable,
     /// Some PKGBUILDs were broken, this contains a list of those PKGBUILDs
     BrokenPKGBUILDs(Vec<String>),
@@ -697,28 +704,13 @@ pub struct ParserOptions {
     /// 
     /// Default: `None`
     pub work_dir: Option<PathBuf>,
-
-    /// Limit the parser implementation to only use a single thread. 
-    /// 
-    /// As we would feed the list of PKGBUILDs into the parser script's `stdin`,
-    /// for minimum IO wait, when this is `false`, the library would spawn two 
-    /// concurrent threads to write `stdin` and read `stderr`, while the main
-    /// thread reads `stdout`
-    /// 
-    /// In some cases you might not want any thread to be spawned. Setting this
-    /// to `true` would cause the library to use a dumber, page-by-page write+
-    /// read behaviour in the same thread.
-    /// 
-    /// Default: `false`
-    pub single_thread: bool,
 }
 
 impl Default for ParserOptions {
     fn default() -> Self {
         Self {
             intepreter: "/bin/bash".into(),
-            work_dir: None,
-            single_thread: false,
+            work_dir: None
         }
     }
 }
@@ -757,6 +749,7 @@ fn take_child_io<I>(from: &mut Option<I>) -> Result<I> {
     }
 }
 
+#[cfg(feature = "nothread")]
 fn set_nonblock<H: AsRawFd>(handle: &H) -> Result<()> {
     if let Err(e) = 
         fcntl(handle.as_raw_fd(), F_SETFL(OFlag::O_NONBLOCK)) 
@@ -788,6 +781,7 @@ impl TryFrom<&mut Child> for ChildIOs {
 
 impl ChildIOs {
     /// Set the underlying child stdin/out/err handles to non-blocking
+    #[cfg(feature = "nothread")]
     fn set_nonblock(&mut self) -> Result<()> {   
         set_nonblock(&self.stdin)?;
         set_nonblock(&self.stdout)?;
@@ -797,7 +791,8 @@ impl ChildIOs {
     /// This is a sub-optimal single-thread implementation, extra times would
     /// be wasted on inefficient page-by-page try-reading to avoid jamming the
     /// child stdin/out/err.
-    fn do_single_thread(mut self, input: &[u8]) -> Result<(Vec<u8>, Vec<u8>)>{
+    #[cfg(feature = "nothread")]
+    fn work(mut self, input: &[u8]) -> Result<(Vec<u8>, Vec<u8>)>{
         self.set_nonblock()?;
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -805,33 +800,30 @@ impl ChildIOs {
         let buffer = buffer.as_mut_slice();
         let mut written = 0;
         let total = input.len();
-        let mut stdin_finish = false;
         let mut stdout_finish = false;
         let mut stderr_finish = false;
         // Rotate among stdin, stdout and stderr to avoid jamming
         loop {
-            if ! stdin_finish {
-                // Try to write at most the length of a PIPE buffer
-                let mut end = written + libc::PIPE_BUF;
-                if end > total {
-                    end = total;
-                }
-                match self.stdin.write(&input[written..end]) {
-                    Ok(written_this) => {
-                        written += written_this;
-                        if written >= total {
-                            stdin_finish = true;
-                            // drop(self.stdin)
-                        }
+            // Try to write at most the length of a PIPE buffer
+            let mut end = written + libc::PIPE_BUF;
+            if end > total {
+                end = total;
+            }
+            match self.stdin.write(&input[written..end]) {
+                Ok(written_this) => {
+                    written += written_this;
+                    if written >= total {
+                        drop(self.stdin);
+                        break
+                    }
+                },
+                Err(e) => 
+                    if let Some(EAGAIN) = e.raw_os_error() {
+                        log::warn!("Child stdin blocked")
+                    } else {
+                        log::error!("Failed to write to child-in: {}", e);
+                        return Err(e.into())
                     },
-                    Err(e) => 
-                        if let Some(EAGAIN) = e.raw_os_error() {
-                            log::warn!("Child stdin blocked")
-                        } else {
-                            log::error!("Failed to write to child-in: {}", e);
-                            return Err(e.into())
-                        },
-                }
             }
             if ! stdout_finish {
                 match self.stdout.read (&mut buffer[..]) {
@@ -840,7 +832,6 @@ impl ChildIOs {
                             stdout.extend_from_slice(&buffer[0..read_this])
                         } else {
                             stdout_finish = true;
-                            // drop(self.stdout)
                         },
                     Err(e) => 
                         if let Some(EAGAIN) = e.raw_os_error() {
@@ -858,7 +849,6 @@ impl ChildIOs {
                             stderr.extend_from_slice(&buffer[0..read_this])
                         } else {
                             stderr_finish = true;
-                            // drop(self.stderr)
                         }
                     Err(e) => 
                         if let Some(EAGAIN) = e.raw_os_error() {
@@ -869,15 +859,55 @@ impl ChildIOs {
                         },
                 }
             }
-            if stdin_finish && stdout_finish && stderr_finish {
+        }
+        // Rotate between stdout and stderr to avoid jamming
+        loop {
+            if ! stdout_finish {
+                match self.stdout.read (&mut buffer[..]) {
+                    Ok(read_this) =>
+                        if read_this > 0 {
+                            stdout.extend_from_slice(&buffer[0..read_this])
+                        } else {
+                            stdout_finish = true;
+                        },
+                    Err(e) => 
+                        if let Some(EAGAIN) = e.raw_os_error() {
+                            log::warn!("Child stdout blocked")
+                        } else {
+                            log::error!("Failed to read from child-out: {}", e);
+                            return Err(e.into())
+                        },
+                }
+            }
+            if ! stderr_finish {
+                match self.stderr.read (&mut buffer[..]) {
+                    Ok(read_this) =>
+                        if read_this > 0 {
+                            stderr.extend_from_slice(&buffer[0..read_this])
+                        } else {
+                            stderr_finish = true;
+                        }
+                    Err(e) => 
+                        if let Some(EAGAIN) = e.raw_os_error() {
+                            log::warn!("Child stderr blocked")
+                        } else {
+                            log::error!("Failed to read from child-err: {}", e);
+                            return Err(e.into())
+                        },
+                }
+            }
+            if stdout_finish && stderr_finish {
                 break
             }
         }
+        drop(self.stdout);
+        drop(self.stderr);
         Ok((stdout, stderr))
     }
 
     /// The multi-threaded 
-    fn do_multi_thread(mut self, mut input: Vec<u8>) 
+    #[cfg(not(feature = "nothread"))]
+    fn work(mut self, mut input: Vec<u8>) 
         -> Result<(Vec<u8>, Vec<u8>)> 
     {
         let stdin_writer = spawn(move||
@@ -1001,12 +1031,10 @@ impl Parser {
         }
         let (mut child, child_ios) = self.get_child_taken()?;
         // Do not handle the error yet, wait for the child to finish first
-        let out_and_err = 
-            if self.options.single_thread {
-                child_ios.do_single_thread(&input)
-            } else {
-                child_ios.do_multi_thread(input)
-            };
+        #[cfg(not(feature = "nothread"))]
+        let out_and_err = child_ios.work(input);
+        #[cfg(feature = "nothread")]
+        let out_and_err = child_ios.work(&input);
         let (out, err) = match out_and_err {
             Ok((out, err)) => {
                 let status = match child.wait() {
@@ -2412,7 +2440,7 @@ impl Pkgbuilds {
     /// 
     /// This is a shortcut that calls `get_sources_with_integ()` for each entry
     /// `Pkgbuild`s and take out all of the results to collect them into a giant
-    /// signle `Vec`.
+    /// single `Vec`.
     /// 
     /// This is useful if you want to download and prepare the sources in `Rust`
     /// world directly without relying on `makepkg`'s internal implementation.

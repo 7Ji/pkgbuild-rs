@@ -94,7 +94,9 @@ let script = ParserScriptBuilder::new()
   - The `Debug` trait would always be derived on all our data types regardless of this feature.
 - `serde`: impl `serde::Serialize` and `serde::Deserialize` for all our data types, useful when you want to pass the `Pkgbuild`s between different programs, or to and from your sub-process in containers.
   - Enabling this would pull in `serde` and `serde_bytes` dependencies.
-
+- `nothread`: limit the parser implementation to only use a single thread. 
+  - As we would feed the list of PKGBUILDs into the parser script's `stdin`, for minimum IO wait, when this is not enabled (default), the library would spawn two concurrent threads to write `stdin` and read `stderr`, while the main thread reads `stdout`.
+  - In some cases you might not want any thread to be spawned. When this is enabled, the library to use a dumber, page-by-page write read behaviour in the same thread.
 
 ## Security concern
 A Bash instance would be created to execute the built-in script, it would read the list of `PKGBUILD`s from its `stdin`, and outputs the parsed result to its `stdout`, which would then be parsed by the library into native Rust data structure.
