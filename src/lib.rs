@@ -1,9 +1,11 @@
-use std::{ffi::{OsString, OsStr}, fmt::{Display, Formatter}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
+use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::{unix::ffi::OsStrExt, fd::AsRawFd}, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, thread::spawn};
 
 use hex::FromHex;
 use libc::{PIPE_BUF, EAGAIN};
 use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
 use tempfile::NamedTempFile;
+#[cfg(feature = "format")]
+use fmt::{Display, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "serde")]
@@ -1256,8 +1258,7 @@ impl<'a> PkgbuildsParsing<'a> {
 }
 
 #[derive(Debug, PartialEq, Default)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UnorderedVersion {
     pub epoch: String,
     pub pkgver: String,
@@ -1323,8 +1324,7 @@ impl UnorderedVersion {
 
 /// The dependency order, comparision is not implemented yet
 #[derive(Debug, PartialEq)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum DependencyOrder {
     Greater,
     GreaterOrEqual,
@@ -1353,8 +1353,7 @@ impl Display for DependencyOrder {
 
 /// The dependency version, comparision is not implemented yet
 #[derive(Debug, PartialEq)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OrderedVersion {
     pub order: DependencyOrder,
     /// The version info without ordering
@@ -1371,8 +1370,7 @@ impl Display for OrderedVersion {
 
 /// A dependency
 #[derive(Debug, PartialEq)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dependency {
     pub name: String,
     pub version: Option<OrderedVersion>
@@ -1446,8 +1444,7 @@ impl TryFrom<&[u8]> for Dependency {
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Provide {
     pub name: String,
     pub version: Option<UnorderedVersion>
@@ -1495,8 +1492,7 @@ impl TryFrom<&[u8]> for Provide {
 
 /// A sub-package parsed from a split-package `PKGBUILD`
 #[derive(Debug)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Package {
     /// The name of the split pacakge
     pub pkgname: String,
@@ -1599,8 +1595,7 @@ fn split_url_fragment_no_query(url: &str) -> Option<(&str, &str, &str)> {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BzrSourceFragment {
     Revision(String)
 }
@@ -1627,6 +1622,7 @@ impl Fragment for BzrSourceFragment {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for BzrSourceFragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         (self as &dyn Fragment).fmt(f)
@@ -1634,8 +1630,7 @@ impl Display for BzrSourceFragment {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FossilSourceFragment {
     Branch(String),
     Commit(String),
@@ -1670,6 +1665,7 @@ impl Fragment for FossilSourceFragment {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for FossilSourceFragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         (self as &dyn Fragment).fmt(f)
@@ -1677,8 +1673,7 @@ impl Display for FossilSourceFragment {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GitSourceFragment {
     Branch(String),
     Commit(String),
@@ -1713,6 +1708,7 @@ impl Fragment for GitSourceFragment {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for GitSourceFragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         (self as &dyn Fragment).fmt(f)
@@ -1720,8 +1716,7 @@ impl Display for GitSourceFragment {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HgSourceFragment {
     Branch(String),
     Revision(String),
@@ -1756,6 +1751,7 @@ impl Fragment for HgSourceFragment {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for HgSourceFragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         (self as &dyn Fragment).fmt(f)
@@ -1763,8 +1759,7 @@ impl Display for HgSourceFragment {
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SvnSourceFragment {
     Revision(String)
 }
@@ -1791,6 +1786,7 @@ impl Fragment for SvnSourceFragment {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for SvnSourceFragment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         (self as &dyn Fragment).fmt(f)
@@ -1798,8 +1794,7 @@ impl Display for SvnSourceFragment {
 }
 
 #[derive(Debug, Default, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SourceProtocol {
     #[default]
     Unknown,
@@ -1902,8 +1897,7 @@ impl SourceProtocol {
 }
 
 #[derive(Debug, Default, Clone)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Source {
     /// The local file name
     pub name: String,
@@ -2105,8 +2099,7 @@ impl From<&Source> for SourceWithInteg {
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug)]
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pkgbuild {
     pub pkgbase: String,
     pub pkgs: Vec<Package>,
@@ -2116,23 +2109,24 @@ pub struct Pkgbuild {
     pub provides: Vec<Provide>,
     pub sources: Vec<Source>,
     pub cksums: Vec<Option<Cksum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub md5sums: Vec<Option<Md5sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub sha1sums: Vec<Option<Sha1sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub sha224sums: Vec<Option<Sha224sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub sha256sums: Vec<Option<Sha256sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub sha384sums: Vec<Option<Sha384sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub sha512sums: Vec<Option<Sha512sum>>,
-    #[serde(with = "serde_optional_bytes_arrays")]
+    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
     pub b2sums: Vec<Option<B2sum>>,
     pub pkgver_func: bool,
 }
 
+#[cfg(feature = "format")]
 fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
 -> std::fmt::Result 
 where
@@ -2154,6 +2148,7 @@ where
     Ok(())
 }
 
+#[cfg(feature = "format")]
 fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
 -> std::fmt::Result 
 where
@@ -2216,8 +2211,7 @@ impl Display for Pkgbuild {
     }
 }
 
-#[cfg(feature = "serde")]
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pkgbuilds {
     entries: Vec<Pkgbuild>
 }
