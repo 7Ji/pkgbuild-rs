@@ -28,15 +28,17 @@ pub enum Error {
         output: usize,
         result: Vec<Pkgbuild>
     },
-    /// The child's Stdio handles are incomplete and we can't get
+    /// The child's Stdio handles are incomplete and we can't get, this is not
+    /// fixable, but intentionally not panic to reduce damage to caller
     ChildStdioIncomplete,
+    /// The child has bad return
+    ChildBadReturn(Option<i32>),
     /// Some thread paniked and not joinable, this should not happen in our 
     /// code explicitly
     #[cfg(not(feature = "nothread"))]
     ThreadUnjoinable,
     /// Some PKGBUILDs were broken, this contains a list of those PKGBUILDs
     BrokenPKGBUILDs(Vec<String>),
-
     /// The parser script has returned some unexpected, illegal output
     ParserScriptIllegalOutput(Vec<u8>)
 }
@@ -995,6 +997,7 @@ impl Parser {
         command.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .arg("-e")
             .arg(self.script.as_ref());
         if let Some(work_dir) = &self.options.work_dir {
             command.current_dir(work_dir);
@@ -1029,6 +1032,9 @@ impl Parser {
             input.extend_from_slice(path.as_ref().as_os_str().as_bytes());
             input.push(b'\n')
         }
+        if count == 0 {
+            return Ok(Vec::new())
+        }
         let (mut child, child_ios) = self.get_child_taken()?;
         // Do not handle the error yet, wait for the child to finish first
         #[cfg(not(feature = "nothread"))]
@@ -1046,7 +1052,7 @@ impl Parser {
                 };
                 if ! status.success() {
                     log::error!("Child did not execute successfully");
-                    return Err(Error::ChildStdioIncomplete)
+                    return Err(Error::ChildBadReturn(status.code()))
                 }
                 (out, err)
             },
@@ -1271,14 +1277,16 @@ impl<'a> PkgbuildsParsing<'a> {
                     pkgbuilds.push(pkgbuild);
                     pkgbuild = PkgbuildParsing::default();
                 } else {
-                    started = true
+                    started = true;
                 }
             } else {
                 log::error!("Illegal line: {}", String::from_utf8_lossy(line));
                 return Err(Error::BrokenPKGBUILDs(Vec::new()))
             }
         }
-        pkgbuilds.push(pkgbuild);
+        if started {
+            pkgbuilds.push(pkgbuild)
+        }
         Ok(Self {
             entries: pkgbuilds,
         })
