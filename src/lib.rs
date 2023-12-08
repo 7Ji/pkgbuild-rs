@@ -5,7 +5,7 @@ use libc::{PIPE_BUF, EAGAIN};
 use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
 use tempfile::NamedTempFile;
 #[cfg(feature = "format")]
-use fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "serde")]

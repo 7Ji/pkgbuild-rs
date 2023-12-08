@@ -18,3 +18,13 @@ tempfile = "3.8"
 default = []
 format = []
 serde = ["dep:serde", "dep:serde_bytes"]
+
+[[example]]
+name = "download"
+path = "examples/download.rs"
+required-features = ["format"]
+
+[[example]]
+name = "printsrcinfo"
+path = "examples/printsrcinfo.rs"
+required-features = ["format"]
