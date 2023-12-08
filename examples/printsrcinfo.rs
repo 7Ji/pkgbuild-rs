@@ -67,8 +67,4 @@ fn main() {
         print_array(&pkg.depends, "depends");
         print_array(&pkg.provides, "provides");
     }
-
-let mut builder = pkgbuild::ParserScriptBuilder::new();
-builder.provides = false;
-builder.pkgver_func = false
 }
