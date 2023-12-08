@@ -2,7 +2,7 @@
 
 A naive [PKGBUILD](https://wiki.archlinux.org/title/PKGBUILD) parser library for Rust. Useful to extract package name, sources, dependency relationships, etc from them with little to no bottleneck. 
 
-## Features
+## Highlights
 
 ### Naive
 This is **naive** in the sense that it does not understand `PKGBUILD`s natively, nor does it care what the `PKGBUILD`s do. Instead, it uses a Bash instance to run a dynamically generated, highly efficient script.
@@ -89,7 +89,11 @@ let script = ParserScriptBuilder::new()
         .expect("Failed to construct script");
 ```
 
-
+## Optional features
+- `format`: impl `Display` for all our data types, useful when you want to display them in logs in pretty format. 
+  - The `Debug` trait would always be derived on all our data types regardless of this feature.
+- `serde`: impl `serde::Serialize` and `serde::Deserialize` for all our data types, useful when you want to pass the `Pkgbuild`s between different programs, or to and from your sub-process in containers.
+  - Enabling this would pull in `serde` and `serde_bytes` dependencies.
 
 
 ## Security concern

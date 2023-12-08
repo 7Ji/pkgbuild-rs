@@ -10,8 +10,11 @@ hex = "0.4.3"
 libc = "0.2"
 log = "0.4"
 nix = { version = "0.27", features = ["fs"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_bytes = { version = "0.11", optional = true }
 tempfile = "3.8"
 
 [features]
-default = ["format"]
+default = ["format", "serde"]
 format = []
+serde = ["dep:serde", "dep:serde_bytes"]
