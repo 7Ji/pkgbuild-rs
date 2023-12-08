@@ -9,7 +9,7 @@ edition = "2021"
 hex = "0.4.3"
 libc = "0.2"
 log = "0.4"
-nix = { version = "0.27", features = ["fs"] }
+nix = { version = "0.27", features = ["fs"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_bytes = { version = "0.11", optional = true }
 tempfile = "3.8"

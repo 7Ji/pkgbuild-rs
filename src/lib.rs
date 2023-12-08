@@ -1,9 +1,7 @@
-use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}};
+use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, fmt::{Display, Formatter}};
 
 use hex::FromHex;
 use tempfile::NamedTempFile;
-#[cfg(feature = "format")]
-use std::fmt::{Display, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "serde")]
@@ -39,7 +37,11 @@ macro_rules! string_from_slice_u8 {
 
 #[derive(Debug)]
 pub enum Error {
+    /// Some I/O error happended, possibly during the script generation
     IoError(std::io::Error),
+    /// Nix Errno, possibly returned when we try to set child stdin/out/err
+    /// as non-blocking
+    #[cfg(feature = "nothread")]
     NixErrno(nix::errno::Errno),
     /// The parsed result count is different from our input, but it might still
     /// be usable
@@ -71,9 +73,32 @@ impl From<std::io::Error> for Error {
     }
 }
 
+#[cfg(feature = "nothread")]
 impl From<nix::errno::Errno> for Error {
     fn from(value: nix::errno::Errno) -> Self {
         Self::NixErrno(value)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::IoError(e) => write!(f, "IO Error: {}", e),
+            #[cfg(feature = "nothread")]
+            Error::NixErrno(e) => write!(f, "Nix Errno: {}", e),
+            Error::MismatchedResultCount { 
+                input, output, result: _ 
+            } => write!(f, "Result Count Mismatch: Input {}, Output {}",
+                    input, output),
+            Error::ChildStdioIncomplete => write!(f, "Child StdIO incomplete"),
+            Error::ChildBadReturn(e) => 
+                write!(f, "Child Bad Return: {:?}", e),
+            Error::ThreadUnjoinable => write!(f, "Thread Not Joinable"),
+            Error::BrokenPKGBUILDs(e) => 
+                write!(f, "PKGBUILDs Broken ({})", e.len()),
+            Error::ParserScriptIllegalOutput(e) => write!(
+                f, "Parser Script Illegal Output: {}", str_from_slice_u8!(e)),
+        }
     }
 }
 
