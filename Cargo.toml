@@ -18,6 +18,7 @@ tempfile = "3.8"
 default = []
 format = []
 nothread = []
+unsafe_str = []
 serde = ["dep:serde", "dep:serde_bytes"]
 
 [[example]]

@@ -17,6 +17,26 @@ use std::os::fd::AsRawFd;
 #[cfg(not(feature = "nothread"))]
 use std::thread::spawn;
 
+#[cfg(feature = "unsafe_str")]
+macro_rules! str_from_slice_u8 {
+    ($l:expr) => {unsafe{std::str::from_utf8_unchecked($l)}}
+}
+
+#[cfg(not(feature = "unsafe_str"))]
+macro_rules! str_from_slice_u8 {
+    ($l:expr) => {String::from_utf8_lossy($l).as_ref()}
+}
+
+#[cfg(feature = "unsafe_str")]
+macro_rules! string_from_slice_u8 {
+    ($l:expr) => {unsafe{String::from_utf8_unchecked($l.into())}}
+}
+
+#[cfg(not(feature = "unsafe_str"))]
+macro_rules! string_from_slice_u8 {
+    ($l:expr) => {String::from_utf8_lossy($l).to_string()}
+}
+
 #[derive(Debug)]
 pub enum Error {
     IoError(std::io::Error),
@@ -1070,11 +1090,11 @@ impl Parser {
         };
         if ! err.is_empty() {
             log::warn!("Parser has written to stderr: \n{}", 
-                String::from_utf8_lossy(&err));
+                str_from_slice_u8!(&err));
         }
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("Raw output from parser:\n{}", 
-                String::from_utf8_lossy(&out));
+                str_from_slice_u8!(&out));
         }
         let pkgbuilds = Pkgbuilds::try_from(
             &PkgbuildsParsing::from_parser_output(&out)?)?;
@@ -1189,7 +1209,7 @@ impl<'a> PkgbuildsParsing<'a> {
                     Some(key) => key,
                     None => {
                         log::error!("Failed to get key from PKGBUILD, at line: \
-                            '{}'", String::from_utf8_lossy(line));
+                            '{}'", str_from_slice_u8!(line));
                         return Err(Error::BrokenPKGBUILDs(Vec::new()));
                     },
                 };
@@ -1197,13 +1217,13 @@ impl<'a> PkgbuildsParsing<'a> {
                     Some(value) => value,
                     None => {
                         log::error!("Failed to get value from PKGBUILD, at line\
-                            : '{}'", String::from_utf8_lossy(line));
+                            : '{}'", str_from_slice_u8!(line));
                         return Err(Error::BrokenPKGBUILDs(Vec::new()));
                     },
                 };
                 if it.next().is_some() {
                     log::error!("PKGBUILD parsing line not sustained: '{}'", 
-                        String::from_utf8_lossy(line));
+                    str_from_slice_u8!(line));
                     return Err(Error::ParserScriptIllegalOutput(line.into()));
                 }
                 match key {
@@ -1234,7 +1254,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         b"n" => pkgbuild.pkgver_func = false,
                         _ => {
                             log::error!("Unexpected value: {}",
-                                String::from_utf8_lossy(value));
+                                str_from_slice_u8!(value));
                             return Err(Error::BrokenPKGBUILDs(Vec::new()))
                         }
                     }
@@ -1244,7 +1264,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         else if key.starts_with(b"provide_") {(8, false)}
                         else {
                             log::error!("Unexpected line: {}",
-                                String::from_utf8_lossy(line));
+                                str_from_slice_u8!(line));
                             return Err(Error::BrokenPKGBUILDs(Vec::new()))
                         };
                         let name = &key[offset..];
@@ -1261,7 +1281,7 @@ impl<'a> PkgbuildsParsing<'a> {
                             Some(pkg) => pkg,
                             None => {
                                 log::error!("Failed to find pkg {}",
-                                    String::from_utf8_lossy(name));
+                                    str_from_slice_u8!(name));
                                 return Err(Error::BrokenPKGBUILDs(Vec::new()))
                             },
                         };
@@ -1280,7 +1300,7 @@ impl<'a> PkgbuildsParsing<'a> {
                     started = true;
                 }
             } else {
-                log::error!("Illegal line: {}", String::from_utf8_lossy(line));
+                log::error!("Illegal line: {}", str_from_slice_u8!(line));
                 return Err(Error::BrokenPKGBUILDs(Vec::new()))
             }
         }
@@ -1340,20 +1360,16 @@ impl TryFrom<&[u8]> for UnorderedVersion {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
-        Self::try_from(String::from_utf8_lossy(value).as_ref())
+        Self::try_from(str_from_slice_u8!(value))
     }
-}
-
-fn string_from_slice_u8(original: &[u8]) -> String {
-    String::from_utf8_lossy(original).into()
 }
 
 impl UnorderedVersion {
     fn from_raw(epoch: &[u8], pkgver: &[u8], pkgrel: &[u8]) -> Self {
         Self {
-            epoch: string_from_slice_u8(epoch),
-            pkgver: string_from_slice_u8(pkgver),
-            pkgrel: string_from_slice_u8(pkgrel),
+            epoch: string_from_slice_u8!(epoch),
+            pkgver: string_from_slice_u8!(pkgver),
+            pkgrel: string_from_slice_u8!(pkgrel),
         }
     }
 }
@@ -1475,7 +1491,7 @@ impl TryFrom<&[u8]> for Dependency {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
-        Self::try_from(String::from_utf8_lossy(value).as_ref())
+        Self::try_from(str_from_slice_u8!(value))
     }
 }
 
@@ -1522,7 +1538,7 @@ impl TryFrom<&[u8]> for Provide {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
-        Self::try_from(String::from_utf8_lossy(value).as_ref())
+        Self::try_from(str_from_slice_u8!(value))
     }
 }
 
@@ -2032,7 +2048,7 @@ impl From<&str> for Source {
 
 impl From<&[u8]> for Source {
     fn from(value: &[u8]) -> Self {
-        String::from_utf8_lossy(value).as_ref().into()
+        str_from_slice_u8!(value).into()
     }
 }
 
@@ -2268,13 +2284,13 @@ impl TryFrom<&PackageParsing<'_>> for Package {
     fn try_from(value: &PackageParsing) -> Result<Self> {
         let mut depends = Vec::new();
         for depend in value.depends.iter() {
-            depends.push(String::from_utf8_lossy(depend).as_ref().try_into()?)
+            depends.push(str_from_slice_u8!(depend).try_into()?)
         }
         let mut provides = Vec::new();
         for provide in value.provides.iter() {
-            provides.push(String::from_utf8_lossy(provide).as_ref().try_into()?)
+            provides.push(str_from_slice_u8!(provide).try_into()?)
         }
-        let pkgname = String::from_utf8_lossy(value.pkgname).into();
+        let pkgname = string_from_slice_u8!(value.pkgname);
         Ok(Self { pkgname, depends, provides })
     }
 }
@@ -2283,6 +2299,9 @@ fn cksum_from_raw(raw: &&[u8]) -> Option<u32> {
     if raw == b"SKIP" {
         return None
     }
+    #[cfg(feature = "unsafe_str")]
+    return unsafe{std::str::from_utf8_unchecked(raw)}.parse().ok();
+    #[cfg(not(feature = "unsafe_str"))]
     String::from_utf8_lossy(raw).parse().ok()
 }
 
@@ -2329,7 +2348,7 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             provides.push((*provide).try_into()?)
         }
         Ok(Self {
-            pkgbase: string_from_slice_u8(value.pkgbase),
+            pkgbase: string_from_slice_u8!(value.pkgbase),
             pkgs,
             version: UnorderedVersion::from_raw(
                 value.epoch, value.pkgver, value.pkgrel),

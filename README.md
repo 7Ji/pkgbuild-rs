@@ -97,6 +97,9 @@ let script = ParserScriptBuilder::new()
 - `nothread`: limit the parser implementation to only use a single thread. 
   - As we would feed the list of PKGBUILDs into the parser script's `stdin`, for minimum IO wait, when this is not enabled (default), the library would spawn two concurrent threads to write `stdin` and read `stderr`, while the main thread reads `stdout`.
   - In some cases you might not want any thread to be spawned. When this is enabled, the library to use a dumber, page-by-page write read behaviour in the same thread.
+- `unsafe_str`: skip some validation for max performance when creating `&str` and `String`
+  - Namely this allows the unsafe conversion from `&[u8]` to `&str` and `String`, so `utf-8` check could be skipped.
+  - This IS unsafe, but the tradeoff of performance vs security could be made if you really prefer performance.
 
 ## Security concern
 A Bash instance would be created to execute the built-in script, it would read the list of `PKGBUILD`s from its `stdin`, and outputs the parsed result to its `stdout`, which would then be parsed by the library into native Rust data structure.
