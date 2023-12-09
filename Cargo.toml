@@ -19,6 +19,7 @@ default = []
 format = []
 nothread = []
 unsafe_str = []
+vercmp = []
 serde = ["dep:serde", "dep:serde_bytes"]
 
 [[example]]
@@ -30,3 +31,8 @@ required-features = ["format"]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
 required-features = ["format"]
+
+[[example]]
+name = "vercmp"
+path = "examples/vercmp.rs"
+required-features = ["vercmp"]
