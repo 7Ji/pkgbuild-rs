@@ -4,8 +4,6 @@ use hex::FromHex;
 use tempfile::NamedTempFile;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
-#[cfg(feature = "serde")]
-mod serde_optional_bytes_arrays;
 #[cfg(feature = "nothread")]
 use libc::{PIPE_BUF, EAGAIN};
 #[cfg(feature = "nothread")]
