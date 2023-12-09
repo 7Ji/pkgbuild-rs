@@ -109,3 +109,5 @@ A Bash instance would be created to execute the built-in script, it would read t
 Shell injection should not be a problem in the library side as the script would not read any variable from user input. However, as `PKGBUILD`s themselved are just plain Bash scripts under the hood, there're a lot of dangerous things that could be done by them. You should thus make sure the part in your code which reads the `PKGBUILD`s should be isolated from the host environment. 
 
 This library does not come with any pre-defined security methods to lock the reader into a container. It's up to the caller's fit to choose an containerization tool to limit the potential damage that could be caused by `PKGBUILD`s.
+
+As this library has an optional `serde` feature, you could use that to serialize `Pkgbuild`s you parsed in a child process you spawned in a safe container, and deserialize that into your main process. `MessagePack` is a highly efficient binary format that's very suitable for the job when passing these data around.
