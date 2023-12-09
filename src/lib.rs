@@ -1428,7 +1428,7 @@ impl<'a> PkgbuildsParsing<'a> {
 /// A re-implementation of `rpmvercmp` funtion, which is used in pacman's 
 /// `alpm_pkg_vercmp()` routine. This is used when comparing `UnorderedVersion`.
 #[cfg(feature = "vercmp")]
-fn vercmp<S1, S2>(ver1: S1, ver2: S2) -> Ordering 
+fn vercmp<S1, S2>(ver1: S1, ver2: S2) -> Option<Ordering>
 where
     S1: AsRef<str>,
     S2: AsRef<str>
@@ -1441,12 +1441,12 @@ where
         let seg2 = segs2.next();
         if seg1.is_none() {
             if seg2.is_none() {
-                return Ordering::Equal
+                return Some(Ordering::Equal)
             } else {
-                return Ordering::Less
+                return Some(Ordering::Less)
             }
         } else if seg2.is_none() {
-            return Ordering::Greater
+            return Some(Ordering::Greater)
         }
         // These both cannot be None, but we still need to fight the type system
         let mut seg1 = seg1.unwrap_or("");
@@ -1456,30 +1456,35 @@ where
             let mut current1 = seg1;
             let mut current2 = seg2;
             let mut sub = false;
-            if c.is_ascii_digit() {
-                for (indic, c) in seg1.char_indices() {
-                    if ! c.is_ascii_digit() {
-                        current1 = &seg1[0..indic];
-                        seg1 = &seg1[indic..];
-                        sub = true;
-                        break
-                    }
+            let is_digit = c.is_ascii_digit();
+            for (indic, c) in seg1.char_indices() {
+                if c.is_ascii_digit() != is_digit {
+                    current1 = &seg1[0..indic];
+                    seg1 = &seg1[indic..];
+                    sub = true;
+                    break
                 }
-                if sub {
-                    sub = false
-                } else {
-                    seg1 = ""
+            }
+            if sub {
+                sub = false
+            } else {
+                seg1 = ""
+            }
+            for (indic, c) in seg2.char_indices() {
+                if c.is_ascii_digit() != is_digit {
+                    current2 = &seg2[0..indic];
+                    seg2 = &seg2[indic..];
+                    sub = true;
+                    break
                 }
-                for (indic, c) in seg2.char_indices() {
-                    if ! c.is_ascii_digit() {
-                        current2 = &seg2[0..indic];
-                        seg2 = &seg2[indic..];
-                        sub = true;
-                        break
-                    }
-                }
-                if ! sub {
-                    seg2 = ""
+            }
+            if ! sub {
+                seg2 = ""
+            }
+            if is_digit {
+                // Prefer digit one
+                if current2.is_empty() {
+                    return Some(Ordering::Greater)
                 }
                 current1 = current1.trim_start_matches(|c: char| c == '0');
                 current2 = current2.trim_start_matches(|c: char| c == '0'); 
@@ -1488,47 +1493,25 @@ where
                     current1.len().partial_cmp(&current2.len()) 
                 {
                     if order != Ordering::Equal {
-                        return order
+                        return Some(order)
                     }
                 }
-            } else {
-                for (indic, c) in seg1.char_indices() {
-                    if c.is_ascii_digit() {
-                        current1 = &seg1[0..indic];
-                        seg1 = &seg1[indic..];
-                        sub = true;
-                        break
-                    }
-                }
-                if sub {
-                    sub = true
-                } else {
-                    seg1 = ""
-                }
-                for (indic, c) in seg2.char_indices() {
-                    if c.is_ascii_digit() {
-                        current2 = &seg2[0..indic];
-                        seg2 = &seg2[indic..];
-                        sub = true;
-                        break
-                    }
-                }
-                if ! sub {
-                    seg2 = ""
-                }
+            } else if current2.is_empty() {
+                // Prefer digit one
+                return Some(Ordering::Less)
             }
             if let Some(order) = current1.partial_cmp(current2) {
                 if order != Ordering::Equal {
-                    return order
+                    return Some(order)
                 }
             }
         }
         if ! seg1.is_empty() {
             log::error!("Version segment '{}' non empty when should be", seg1);
-            return Ordering::Less
+            return None
         }
         if ! seg2.is_empty() {
-            return Ordering::Less
+            return Some(Ordering::Less)
         }
     }
 }
@@ -1544,29 +1527,35 @@ pub struct UnorderedVersion {
 #[cfg(feature = "vercmp")]
 impl PartialOrd for UnorderedVersion {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(Ord::cmp(self, other))
+        // The ALPM parseEVR() always assume at least 0 epoch
+        let mut order = vercmp(
+            if self.epoch.is_empty() {"0"} else {&self.epoch},
+            if other.epoch.is_empty() {"0"} else {&other.epoch})?;
+        if order != Ordering::Equal {
+            return Some(order)
+        }
+        order = vercmp(&self.pkgver, &other.pkgver)?;
+        if order != Ordering::Equal {
+            return Some(order)
+        }
+        // Only compare pkgrel if they both exist
+        if self.pkgrel.is_empty() || other.pkgrel.is_empty() {
+            return Some(Ordering::Equal)
+        }
+        vercmp(&self.pkgrel, &other.pkgrel)
     }
 }
 
 #[cfg(feature = "vercmp")]
 impl Ord for UnorderedVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        // The ALPM parseEVR() always assume at least 0 epoch
-        let mut cmp = vercmp(
-            if self.epoch.is_empty() {"0"} else {&self.epoch},
-            if other.epoch.is_empty() {"0"} else {&other.epoch});
-        if cmp != Ordering::Equal {
-            return cmp
+        if let Some(order) = self.partial_cmp(other) {
+            order
+        } else {
+            // Imitate the pacman vercmp behaviour, return -1 (less) for 
+            // versions not comparable
+            Ordering::Less
         }
-        cmp = vercmp(&self.pkgver, &other.pkgver);
-        if cmp != Ordering::Equal {
-            return cmp
-        }
-        // Only compare pkgrel if they both exist
-        if self.pkgrel.is_empty() || other.pkgrel.is_empty() {
-            return Ordering::Equal
-        }
-        vercmp(&self.pkgrel, &other.pkgrel)
     }
 }
 
