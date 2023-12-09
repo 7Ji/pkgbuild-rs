@@ -1426,7 +1426,7 @@ impl<'a> PkgbuildsParsing<'a> {
 }
 
 /// A re-implementation of `rpmvercmp` funtion, which is used in pacman's 
-/// `alpm_pkg_vercmp()` routine. This is used when comparing `UnorderedVersion`.
+/// `alpm_pkg_vercmp()` routine. This is used when comparing `PlainVersion`.
 #[cfg(feature = "vercmp")]
 fn vercmp<S1, S2>(ver1: S1, ver2: S2) -> Option<Ordering>
 where
@@ -1516,16 +1516,18 @@ where
     }
 }
 
+/// The version without ordering, the one used for package itself, but not the
+/// one used when declaring dependency relationship.
 #[derive(Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct UnorderedVersion {
+pub struct PlainVersion {
     pub epoch: String,
     pub pkgver: String,
     pub pkgrel: String
 }
 
 #[cfg(feature = "vercmp")]
-impl PartialOrd for UnorderedVersion {
+impl PartialOrd for PlainVersion {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // The ALPM parseEVR() always assume at least 0 epoch
         let mut order = vercmp(
@@ -1547,7 +1549,7 @@ impl PartialOrd for UnorderedVersion {
 }
 
 #[cfg(feature = "vercmp")]
-impl Ord for UnorderedVersion {
+impl Ord for PlainVersion {
     fn cmp(&self, other: &Self) -> Ordering {
         if let Some(order) = self.partial_cmp(other) {
             order
@@ -1560,7 +1562,7 @@ impl Ord for UnorderedVersion {
 }
 
 #[cfg(feature = "format")]
-impl Display for UnorderedVersion {
+impl Display for PlainVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if ! self.epoch.is_empty() {
             write!(f, "{}:", self.epoch)?;
@@ -1573,7 +1575,7 @@ impl Display for UnorderedVersion {
     }
 }
 
-impl TryFrom<&str> for UnorderedVersion {
+impl TryFrom<&str> for PlainVersion {
     type Error = Error;
     
     fn try_from(value: &str) -> Result<Self> {
@@ -1594,7 +1596,7 @@ impl TryFrom<&str> for UnorderedVersion {
     }
 }
 
-impl TryFrom<&[u8]> for UnorderedVersion {
+impl TryFrom<&[u8]> for PlainVersion {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
@@ -1602,7 +1604,7 @@ impl TryFrom<&[u8]> for UnorderedVersion {
     }
 }
 
-impl UnorderedVersion {
+impl PlainVersion {
     fn from_raw(epoch: &[u8], pkgver: &[u8], pkgrel: &[u8]) -> Self {
         Self {
             epoch: string_from_slice_u8!(epoch),
@@ -1647,16 +1649,15 @@ impl Display for DependencyOrder {
 pub struct OrderedVersion {
     pub order: DependencyOrder,
     /// The version info without ordering
-    pub unordered: UnorderedVersion,
+    pub plain: PlainVersion,
 }
 
 #[cfg(feature = "format")]
 impl Display for OrderedVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.order, self.unordered)
+        write!(f, "{}{}", self.order, self.plain)
     }
 }
-
 
 /// A dependency
 #[derive(Debug, PartialEq)]
@@ -1690,19 +1691,19 @@ impl TryFrom<&str> for Dependency {
                 Ok(Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::GreaterOrEqual, 
-                        unordered: version.try_into()? }) })
+                        plain: version.try_into()? }) })
             } else if let Some((name, version)) = 
                 value.split_once("<=") 
             {
                 Ok(Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::LessOrEqual, 
-                        unordered: version.try_into()? }) })
+                        plain: version.try_into()? }) })
             } else {
                 Ok(Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::Equal, 
-                        unordered: version.try_into()? }) })
+                        plain: version.try_into()? }) })
             }
         } else if let Some((name, version)) = 
             value.split_once('>') 
@@ -1710,7 +1711,7 @@ impl TryFrom<&str> for Dependency {
             Ok(Self { name: name.into(), 
                 version: Some(OrderedVersion { 
                     order: DependencyOrder::Greater, 
-                    unordered: version.try_into()? }) })
+                    plain: version.try_into()? }) })
 
         } else if let Some((name, version)) = 
             value.split_once('<') 
@@ -1718,7 +1719,7 @@ impl TryFrom<&str> for Dependency {
             Ok(Self { name: name.into(), 
                 version: Some(OrderedVersion { 
                     order: DependencyOrder::Less, 
-                    unordered: version.try_into()? }) })
+                    plain: version.try_into()? }) })
         } else {
             Ok(Self {name: value.into(), version: None})
         }
@@ -1737,7 +1738,7 @@ impl TryFrom<&[u8]> for Dependency {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Provide {
     pub name: String,
-    pub version: Option<UnorderedVersion>
+    pub version: Option<PlainVersion>
 }
 
 #[cfg(feature = "format")]
@@ -2393,7 +2394,7 @@ impl From<&Source> for SourceWithInteg {
 pub struct Pkgbuild {
     pub pkgbase: String,
     pub pkgs: Vec<Package>,
-    pub version: UnorderedVersion,
+    pub version: PlainVersion,
     pub depends: Vec<Dependency>,
     pub makedepends: Vec<Dependency>,
     pub provides: Vec<Provide>,
@@ -2588,7 +2589,7 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         Ok(Self {
             pkgbase: string_from_slice_u8!(value.pkgbase),
             pkgs,
-            version: UnorderedVersion::from_raw(
+            version: PlainVersion::from_raw(
                 value.epoch, value.pkgver, value.pkgrel),
             depends,
             makedepends,

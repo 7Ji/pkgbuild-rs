@@ -100,7 +100,7 @@ let script = ParserScriptBuilder::new()
 - `unsafe_str`: skip some validation for max performance when creating `&str` and `String`
   - Namely this allows the unsafe conversion from `&[u8]` to `&str` and `String`, so `utf-8` check could be skipped.
   - This IS unsafe, but the tradeoff of performance vs security could be made if you really prefer performance.
-- `vercmp`: support version comparison between `UnorderedVersion`
+- `vercmp`: support version comparison between `PlainVersion`
   - This uses a Rust native port of the `rpmvercmp()` function, just like in `pacman`. The result should be the same as `pacman`'s `vercmp` CLI utility.
 
 ## Security concern
