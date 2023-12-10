@@ -16,6 +16,29 @@ The whole parser script uses only `Bash` native logics and does not spawn child 
 
 _On a test against ArchLinuxARM's all 424 official `PKGBUILD`s (since ArchLinux's official `PKGBUILD`s are maintained each in their seperate repo, it is hard to fetch multiple of them quickly for test), the example `dump_all` executable took ~2.25 seconds to assembly the script, feed the list to the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~5.3 milliseconds. It should scale pretty well for a even non-trivial repo hoster._
 
+### Lightweight
+With only the default features (`tempfile`) the library only needs 3 direct dependencies, and 8 dependencies in total:
+```
+> cargo tree
+pkgbuild v0.1.0 (/home/nomad7ji/Development/library/pkgbuild-rs)
+├── hex v0.4.3
+├── log v0.4.20
+└── tempfile v3.8.1
+    ├── cfg-if v1.0.0
+    ├── fastrand v2.0.1
+    └── rustix v0.38.26
+        ├── bitflags v2.4.1
+        └── linux-raw-sys v0.4.12
+```
+With no optional features, the library only needs 2 dependencies
+```
+> cargo tree
+pkgbuild v0.1.0 (/home/nomad7ji/Development/library/pkgbuild-rs)
+├── hex v0.4.3
+└── log v0.4.20
+```
+The library provides a lot of optional features and you can fine-tune them to meet your requirements without pulling in a giant dependency tree.
+
 ## Examples
 There are a couple few examples under [examples](examples), to run them, do like
 ```
