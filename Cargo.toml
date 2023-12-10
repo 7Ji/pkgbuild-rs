@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hex = "0.4.3"
+hex = "0.4"
 log = "0.4"
 
 [dependencies.libc]
@@ -29,6 +29,10 @@ version = "0.11"
 optional = true
 version = "3.8"
 
+[dependencies.rmp-serde]
+optional = true
+version = "1.1"
+
 [features]
 default = ["tempfile"]
 format = []
@@ -37,6 +41,7 @@ serde = ["dep:serde", "serde/derive", "serde_bytes"]
 tempfile = ["dep:tempfile"]
 unsafe_str = []
 vercmp = []
+__msgpack = ["serde", "rmp-serde"]
 
 [[example]]
 name = "download"
@@ -52,6 +57,11 @@ required-features = ["format", "tempfile"]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
 required-features = ["format", "tempfile"]
+
+[[example]]
+name = "spawner"
+path = "examples/spawner.rs"
+required-features = ["tempfile", "__msgpack"]
 
 [[example]]
 name = "vercmp"
