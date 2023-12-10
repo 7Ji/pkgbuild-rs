@@ -5,8 +5,6 @@ use tempfile::NamedTempFile;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "nothread")]
-use libc::{PIPE_BUF, EAGAIN};
-#[cfg(feature = "nothread")]
 use nix::fcntl::{fcntl, FcntlArg::F_SETFL, OFlag};
 #[cfg(feature = "nothread")]
 use std::os::fd::AsRawFd;
@@ -178,6 +176,7 @@ impl Display for Error {
             Error::ChildStdioIncomplete => write!(f, "Child StdIO incomplete"),
             Error::ChildBadReturn(e) => 
                 write!(f, "Child Bad Return: {:?}", e),
+            #[cfg(not(feature = "nothread"))]
             Error::ThreadUnjoinable => write!(f, "Thread Not Joinable"),
             Error::BrokenPKGBUILDs(e) => 
                 write!(f, "PKGBUILDs Broken ({})", e.len()),
@@ -925,6 +924,8 @@ impl ChildIOs {
     /// child stdin/out/err.
     #[cfg(feature = "nothread")]
     fn work(mut self, input: &[u8]) -> Result<(Vec<u8>, Vec<u8>)>{
+        use libc::{PIPE_BUF, EAGAIN};
+
         self.set_nonblock()?;
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -937,7 +938,7 @@ impl ChildIOs {
         // Rotate among stdin, stdout and stderr to avoid jamming
         loop {
             // Try to write at most the length of a PIPE buffer
-            let mut end = written + libc::PIPE_BUF;
+            let mut end = written + PIPE_BUF;
             if end > total {
                 end = total;
             }

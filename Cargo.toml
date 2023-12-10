@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 hex = "0.4.3"
-libc = "0.2"
+libc = {version = "0.2", optional = true }
 log = "0.4"
 nix = { version = "0.27", features = ["fs"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -17,10 +17,10 @@ tempfile = "3.8"
 [features]
 default = []
 format = []
-nothread = []
+nothread = ["libc", "nix"]
 unsafe_str = []
 vercmp = []
-serde = ["dep:serde", "dep:serde_bytes"]
+serde = ["dep:serde", "serde_bytes"]
 
 [[example]]
 name = "download"
