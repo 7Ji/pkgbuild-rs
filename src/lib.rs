@@ -1573,10 +1573,8 @@ impl Display for PlainVersion {
     }
 }
 
-impl TryFrom<&str> for PlainVersion {
-    type Error = Error;
-    
-    fn try_from(value: &str) -> Result<Self> {
+impl From<&str> for PlainVersion {
+    fn from(value: &str) -> Self {
         let (epoch, value) = 
             match value.split_once(':') 
         {
@@ -1590,15 +1588,13 @@ impl TryFrom<&str> for PlainVersion {
             Some((pkgver,pkgrel)) => (pkgver.into(), pkgrel.into()),
             None => (value.into(), Default::default()),
         };
-        Ok(Self { epoch, pkgver, pkgrel })
+        Self { epoch, pkgver, pkgrel }
     }
 }
 
-impl TryFrom<&[u8]> for PlainVersion {
-    type Error = Error;
-
-    fn try_from(value: &[u8]) -> Result<Self> {
-        Self::try_from(str_from_slice_u8!(value))
+impl From<&[u8]> for PlainVersion {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
     }
 }
 
@@ -1676,59 +1672,55 @@ impl Display for Dependency {
     }
 }
 
-impl TryFrom<&str> for Dependency {
-    type Error = Error;
-
-    fn try_from(value: &str) -> Result<Self> {
+impl From<&str> for Dependency {
+    fn from(value: &str) -> Self {
         if let Some((name, version)) = 
             value.split_once("=") 
         {
             if let Some((name, version)) = 
                 value.split_once(">=") 
             {
-                Ok(Self { name: name.into(), 
+                Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::GreaterOrEqual, 
-                        plain: version.try_into()? }) })
+                        plain: version.into() }) }
             } else if let Some((name, version)) = 
                 value.split_once("<=") 
             {
-                Ok(Self { name: name.into(), 
+                Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::LessOrEqual, 
-                        plain: version.try_into()? }) })
+                        plain: version.into() }) }
             } else {
-                Ok(Self { name: name.into(), 
+                Self { name: name.into(), 
                     version: Some(OrderedVersion { 
                         order: DependencyOrder::Equal, 
-                        plain: version.try_into()? }) })
+                        plain: version.into() }) }
             }
         } else if let Some((name, version)) = 
             value.split_once('>') 
         {
-            Ok(Self { name: name.into(), 
+            Self { name: name.into(), 
                 version: Some(OrderedVersion { 
                     order: DependencyOrder::Greater, 
-                    plain: version.try_into()? }) })
+                    plain: version.into() }) }
 
         } else if let Some((name, version)) = 
             value.split_once('<') 
         {
-            Ok(Self { name: name.into(), 
+            Self { name: name.into(), 
                 version: Some(OrderedVersion { 
                     order: DependencyOrder::Less, 
-                    plain: version.try_into()? }) })
+                    plain: version.into() }) }
         } else {
-            Ok(Self {name: value.into(), version: None})
+            Self {name: value.into(), version: None}
         }
     }
 }
 
-impl TryFrom<&[u8]> for Dependency {
-    type Error = Error;
-
-    fn try_from(value: &[u8]) -> Result<Self> {
-        Self::try_from(str_from_slice_u8!(value))
+impl From<&[u8]> for Dependency {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
     }
 }
 
@@ -1764,7 +1756,7 @@ impl TryFrom<&str> for Provide {
             value.split_once("=") 
         {
             Ok(Self { name: name.into(), 
-                version: Some(version.try_into()?) }) 
+                version: Some(version.into()) }) 
         } else {
             Ok(Self {name: value.into(), version: None})
         }
@@ -2519,10 +2511,8 @@ impl TryFrom<&PackageParsing<'_>> for Package {
     type Error = Error;
 
     fn try_from(value: &PackageParsing) -> Result<Self> {
-        let mut depends = Vec::new();
-        for depend in value.depends.iter() {
-            depends.push(str_from_slice_u8!(depend).try_into()?)
-        }
+        let depends = value.depends.iter().map(
+            |depend|(*depend).into()).collect();
         let mut provides = Vec::new();
         for provide in value.provides.iter() {
             provides.push(str_from_slice_u8!(provide).try_into()?)
@@ -2572,14 +2562,6 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         for pkg in value.pkgs.iter() {
             pkgs.push(pkg.try_into()?)
         }
-        let mut depends = Vec::new();
-        for depend in value.depends.iter() {
-            depends.push((*depend).try_into()?)
-        }
-        let mut makedepends = Vec::new();
-        for makedepend in value.makedepends.iter() {
-            makedepends.push((*makedepend).try_into()?)
-        }
         let mut provides = Vec::new();
         for provide in value.provides.iter() {
             provides.push((*provide).try_into()?)
@@ -2589,8 +2571,10 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             pkgs,
             version: PlainVersion::from_raw(
                 value.epoch, value.pkgver, value.pkgrel),
-            depends,
-            makedepends,
+            depends: value.depends.iter().map(|depend|
+                (*depend).into()).collect(),
+            makedepends: value.makedepends.iter().map(|makedepend|
+                (*makedepend).into()).collect(),
             provides,
             sources: value.sources.iter().map(|source|
                 (*source).into()).collect(),
