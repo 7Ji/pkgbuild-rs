@@ -102,6 +102,9 @@ let script = ParserScriptBuilder::new()
   - This IS unsafe, but the tradeoff of performance vs security could be made if you really prefer performance.
 - `vercmp`: support version comparison between `PlainVersion`
   - This uses a Rust native port of the `rpmvercmp()` function, just like in `pacman`. The result should be the same as `pacman`'s `vercmp` CLI utility.
+- `tempfile`: support creating parser script as `tempfile::NamedTempFile`, this is enabled by default.
+  - If disabled, this would remove a whole dependency tree introduced by `tempfile`, but you'll have to explicitly set paths for the parser script.
+
 
 ## Security concern
 A Bash instance would be created to execute the built-in script, it would read the list of `PKGBUILD`s from its `stdin`, and outputs the parsed result to its `stdout`, which would then be parsed by the library into native Rust data structure.

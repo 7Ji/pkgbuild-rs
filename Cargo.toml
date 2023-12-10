@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 hex = "0.4.3"
 log = "0.4"
-tempfile = "3.8"
 
 [dependencies.libc]
 optional = true
@@ -26,23 +25,33 @@ version = "1.0"
 optional = true
 version = "0.11"
 
+[dependencies.tempfile]
+optional = true
+version = "3.8"
+
 [features]
-default = []
+default = ["tempfile"]
 format = []
 nothread = ["libc", "nix/fs"]
+serde = ["dep:serde", "serde/derive", "serde_bytes"]
+tempfile = ["dep:tempfile"]
 unsafe_str = []
 vercmp = []
-serde = ["dep:serde", "serde/derive", "serde_bytes"]
 
 [[example]]
 name = "download"
 path = "examples/download.rs"
-required-features = ["format"]
+required-features = ["format", "tempfile"]
+
+[[example]]
+name = "dump_all"
+path = "examples/dump_all.rs"
+required-features = ["format", "tempfile"]
 
 [[example]]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
-required-features = ["format"]
+required-features = ["format", "tempfile"]
 
 [[example]]
 name = "vercmp"

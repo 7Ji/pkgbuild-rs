@@ -1,7 +1,6 @@
 use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, fmt::{Display, Formatter}};
 
 use hex::FromHex;
-use tempfile::NamedTempFile;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "nothread")]
@@ -749,6 +748,7 @@ impl ParserScriptBuilder {
     /// To avoid any damage to possibly existing files, if we failed at
     /// `Some(path)`, we would not try to erase either the file or the content.
     /// Only when we failed at `None`, would the `NamedTempFile` be removed.
+    #[cfg(feature = "tempfile")]
     pub fn build<P: AsRef<Path>>(&self, path: Option<P>) 
         -> Result<ParserScript> 
     {
@@ -789,16 +789,43 @@ impl ParserScriptBuilder {
             Ok(ParserScript::Temporary(temp_file))
         }
     }
+
+    /// Build a `ParserScript`, at given path, which would could later be used 
+    /// to parse `PKGBUILD`s
+    /// 
+    /// Return `Ok(ParserScript)` if write was successfull, return `Err` on IO
+    /// Error.
+    #[cfg(not(feature = "tempfile"))]
+    pub fn build<P: AsRef<Path>>(&self, path: P) -> Result<ParserScript> {
+        let file = match std::fs::File::create(&path) {
+            Ok(file) => file,
+            Err(e) => {
+                log::error!("Failed to create script file at '{}': {}",
+                                path.as_ref().display(), e);
+                return Err(e.into())
+            },
+        };
+        if let Err(e) = self.write(
+            BufWriter::new(file)) 
+        {
+            log::error!("Failed to write script into file '{}': {}", 
+                    path.as_ref().display(), e);
+            return Err(Error::IoError(e))
+        }
+        Ok(ParserScript::Persistent(path.as_ref().into()))
+    }
 }
 
 pub enum ParserScript {
-    Temporary(NamedTempFile),
+    #[cfg(feature = "tempfile")]
+    Temporary(tempfile::NamedTempFile),
     Persistent(PathBuf),
 }
 
 impl AsRef<OsStr> for ParserScript {
     fn as_ref(&self) -> &OsStr {
         match self {
+            #[cfg(feature = "tempfile")]
             ParserScript::Temporary(temp_file) => 
                 temp_file.path().as_os_str(),
             ParserScript::Persistent(path) => path.as_os_str(),
@@ -818,7 +845,23 @@ impl ParserScript {
     /// 
     /// If customization on those variables are needed, then caller should 
     /// create a `ParserScript` with a `ParserScriptBuilder`
+    #[cfg(feature = "tempfile")]
     pub fn new<P: AsRef<Path>>(path: Option<P>) -> Result<Self> {
+        ParserScriptBuilder::new().build(path)
+    }
+
+    /// Generate a parser script at the given path
+    /// 
+    /// This uses either `LIBRARY` from env or `/usr/share/makekg` if the env
+    /// is missing for `makepkg_library` (named `LIBRARY` in  `makepkg` 
+    /// routines) and either `MAKEPKG_CONF` from env or `/etc/makepkg.conf` if
+    /// the env is missing for `makepkg_config` (named `MAKEPKG_CONF` in 
+    /// `makepkg` routines). 
+    /// 
+    /// If customization on those variables are needed, then caller should 
+    /// create a `ParserScript` with a `ParserScriptBuilder`
+    #[cfg(not(feature = "tempfile"))]
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         ParserScriptBuilder::new().build(path)
     }
 }
@@ -1100,8 +1143,21 @@ pub struct Parser {
 
 impl Parser {
     /// Create a new parser with default settings
+    #[cfg(feature = "tempfile")]
     pub fn new() -> Result<Self> {
         let script = ParserScript::new(None::<&str>)?;
+        let options = ParserOptions::default();
+        Ok(Self{
+            script,
+            options,
+        })
+    }
+
+    /// Create a new parser with default settings, with parser script created
+    /// at the given path
+    #[cfg(not(feature = "tempfile"))]
+    pub fn new<P: AsRef<Path>>(script_path: P) -> Result<Self> {
+        let script = ParserScript::new(script_path)?;
         let options = ParserOptions::default();
         Ok(Self{
             script,
@@ -1252,6 +1308,7 @@ impl Parser {
 }
 
 /// A shortcut to create a `Parser` and parse multiple `PKGBUILD`s
+#[cfg(feature = "tempfile")]
 pub fn parse_multi<I, P>(paths: I) -> Result<Vec<Pkgbuild>>
 where
     I: IntoIterator<Item = P>,
@@ -1260,12 +1317,38 @@ where
     Parser::new()?.parse_multi(paths)
 }
 
+/// A shortcut to create a `Parser` and parse multiple `PKGBUILD`s, with the
+/// parser script created at the given path
+#[cfg(not(feature = "tempfile"))]
+pub fn parse_multi<I, P1, P2>(script_path: P1, pkgbuild_paths: I) 
+-> Result<Vec<Pkgbuild>>
+where
+    I: IntoIterator<Item = P2>,
+    P1: AsRef<Path>,
+    P2: AsRef<Path>
+{
+    Parser::new(script_path)?.parse_multi(pkgbuild_paths)
+}
+
 /// A shortcut to create a `Parser` and parse a single `PKGBUILD`
+#[cfg(feature = "tempfile")]
 pub fn parse_one<P>(path: Option<P>) -> Result<Pkgbuild>
 where
     P: AsRef<Path> 
 {
     Parser::new()?.parse_one(path)
+}
+
+/// A shortcut to create a `Parser` and parse a single `PKGBUILD`, with the
+/// parser script created at the given path
+#[cfg(not(feature = "tempfile"))]
+pub fn parse_one<P1, P2>(script_path: P1, pkgbuild_path: Option<P2>) 
+-> Result<Pkgbuild>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>
+{
+    Parser::new(script_path)?.parse_one(pkgbuild_path)
 }
 
 /// A sub-package parsed from a split-package `PKGBUILD`, borrowed variant
