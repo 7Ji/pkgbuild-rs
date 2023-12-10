@@ -4,7 +4,7 @@ fn main() {
     let pkgbuilds = pkgbuild::parse_multi(args).unwrap();
     #[cfg(feature = "format")]
     for pkgbuild in pkgbuilds {
-        println!("{:}", pkgbuild);
+        println!("{}", pkgbuild);
     }
     #[cfg(not(feature = "format"))]
     println!("{:?}", pkgbuilds);
