@@ -1510,7 +1510,7 @@ impl<'a> PkgbuildsParsing<'a> {
 /// A re-implementation of `rpmvercmp` funtion, which is used in pacman's 
 /// `alpm_pkg_vercmp()` routine. This is used when comparing `PlainVersion`.
 #[cfg(feature = "vercmp")]
-fn vercmp<S1, S2>(ver1: S1, ver2: S2) -> Option<Ordering>
+pub fn vercmp<S1, S2>(ver1: S1, ver2: S2) -> Option<Ordering>
 where
     S1: AsRef<str>,
     S2: AsRef<str>
