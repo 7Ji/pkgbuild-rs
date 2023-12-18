@@ -14,7 +14,7 @@ The parser script is hightly optimized and avoids a lot of pitfalls in the `make
 
 The whole parser script uses only `Bash` native logics and does not spawn child processes other than the subshells to extract package-specific variables, and even those are avoidable.
 
-_On a test against ArchLinuxARM's all 424 official `PKGBUILD`s (since ArchLinux's official `PKGBUILD`s are maintained each in their seperate repo, it is hard to fetch multiple of them quickly for test), the example `dump_all` executable took ~2.25 seconds to assembly the script, feed the list to the script, wait for the script's stdout, parse it, and output the result to stdout. For each added `PKGBUILD` the parsing time increases by ~5.3 milliseconds. It should scale pretty well for a even non-trivial repo hoster._
+_On a test against ArchLinux's 12406 official `PKGBUILD`s, the example `dump_all` executable took ~101 seconds to assembly the script, feed the list to the script, wait for the script's stdout, parse it, and output the result to stdout, on a single core of 1600X. For each added `PKGBUILD` the parsing time increases by ~8.14 milliseconds. It should scale pretty well for a even non-trivial repo hoster._
 
 ### Lightweight
 With only the default features (`tempfile`) the library only needs 3 direct dependencies, and 8 dependencies in total:
