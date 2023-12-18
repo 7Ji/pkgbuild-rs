@@ -10,11 +10,11 @@ This is **naive** in the sense that it does not understand `PKGBUILD`s natively,
 Being **naive**, this avoids a lot of hacks needed in the Rust world to try to understand a Bash script and a lot of pitfalls that come with them.
 
 ### High efficiency
-The parser script is hightly optimized and avoids a lot of pitfalls in the `makepkg --printsrcinfo` routine. The whole logic is dynamically assembled yet static during the parser lifetime. It wastes 0 time on stuffs the users do not want to parse.
+The parser script is highly optimized and avoids a lot of pitfalls in the `libmakepkg` routine. The whole logic is dynamically assembled yet static during the parser lifetime. It wastes 0 time on stuffs the users do not want to parse.
 
 The whole parser script uses only `Bash` native logics and does not spawn child processes other than the subshells to extract package-specific variables, and even those are avoidable.
 
-_On a test against ArchLinux's 12406 official `PKGBUILD`s, the example `dump_all` executable took ~101 seconds to assembly the script, feed the list to the script, wait for the script's stdout, parse it, and output the result to stdout, on a single core of 1600X. For each added `PKGBUILD` the parsing time increases by ~8.14 milliseconds. It should scale pretty well for a even non-trivial repo hoster._
+_On a test against ArchLinux's 12406 official `PKGBUILD`s, the example `benchmark` executable took ~100 seconds when single-threaded and ~7.5 seconds when multi-threaded on an AMD Ryzen 1600X_
 
 ### Lightweight
 With only the default features (`tempfile`) the library only needs 3 direct dependencies, and 8 dependencies in total:
