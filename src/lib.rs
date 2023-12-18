@@ -1216,7 +1216,11 @@ impl Parser {
         let mut count = 0;
         for path in paths {
             count += 1;
-            input.extend_from_slice(path.as_ref().as_os_str().as_bytes());
+            let line = path.as_ref().as_os_str().as_bytes();
+            if ! line.contains(&b'/') {
+                input.extend_from_slice(b"./");
+            }
+            input.extend_from_slice(line);
             input.push(b'\n')
         }
         if count == 0 {
@@ -1248,9 +1252,13 @@ impl Parser {
                     log::error!("Failed to kill child after failed parsing");
                     return Err(e.into())
                 }
-                if let Err(e) = child.wait() {
-                    log::error!("Failed to wait for killed child: {}", e);
-                    return Err(e.into())
+                match child.wait() {
+                    Ok(status) =>
+                        log::warn!("Killed child return: {}", status),
+                    Err(e) => {
+                        log::error!("Failed to wait for killed child: {}", e);
+                        return Err(e.into())
+                    }
                 }
                 return Err(e)
             },
