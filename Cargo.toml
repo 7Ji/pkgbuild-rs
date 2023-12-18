@@ -44,6 +44,10 @@ vercmp = []
 __msgpack = ["serde", "rmp-serde"]
 
 [[example]]
+name = "benchmark"
+path = "examples/benchmark.rs"
+
+[[example]]
 name = "download"
 path = "examples/download.rs"
 required-features = ["format", "tempfile"]
@@ -51,7 +55,7 @@ required-features = ["format", "tempfile"]
 [[example]]
 name = "dump_all"
 path = "examples/dump_all.rs"
-required-features = ["format", "tempfile"]
+required-features = ["tempfile"]
 
 [[example]]
 name = "printsrcinfo"

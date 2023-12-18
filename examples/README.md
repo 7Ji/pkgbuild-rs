@@ -1,5 +1,10 @@
 # Examples for pkgbuild-rs
 
+## benchmark
+Benchmarking the performance to parse all PKGBUILDs in the current work directory, both single-threaded and multi-threaded.
+
+To get a big enough sample to benchmark, you could use [7Ji/arch_pkgbuilds_dumper](https://github.com/7Ji/arch_pkgbuilds_dumper) to dump all of Arch Linux's official PKGBUILDs
+
 ## download
 A fake downloader that pretends to download sources defined in a PKGBUILD, it does not actually download them, but demonstrates how you can implement your download logic natively in Rust.
 
