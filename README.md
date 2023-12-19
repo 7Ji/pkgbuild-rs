@@ -5,7 +5,9 @@ A naive [PKGBUILD](https://wiki.archlinux.org/title/PKGBUILD) parser library for
 ## Highlights
 
 ### Naive
-This is **naive** in the sense that it does not understand `PKGBUILD`s natively, nor does it care what the `PKGBUILD`s do. Instead, it uses a Bash instance to run a dynamically generated, highly efficient script.
+This is **naive** in the sense that it does not understand `PKGBUILD`s natively, nor does it care what the `PKGBUILD`s do. 
+
+Instead, it uses a Bash instance to run a dynamically generated, highly efficient script, which does only the bare-minimum handling of in-PKGBUILD data structures and dump them directly to its stdout with minimum decorating to be parsed by the library.
 
 Being **naive**, this avoids a lot of hacks needed in the Rust world to try to understand a Bash script and a lot of pitfalls that come with them.
 
