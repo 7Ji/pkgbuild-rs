@@ -2471,7 +2471,7 @@ impl From<&Source> for SourceWithInteg {
 }
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pkgbuild {
     pub pkgbase: String,
@@ -2584,6 +2584,7 @@ impl Display for Pkgbuild {
     }
 }
 
+#[derive(Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pkgbuilds {
     entries: Vec<Pkgbuild>
