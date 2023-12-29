@@ -147,6 +147,31 @@ pub enum Error {
     ParserScriptIllegalOutput(Vec<u8>)
 }
 
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        match self {
+            Self::IoError(arg0) => Self::IoError(arg0.kind().into()),
+            #[cfg(feature = "nothread")]
+            Self::NixErrno(arg0) => Self::NixErrno(*arg0),
+            Self::MismatchedResultCount { 
+                input, output, result 
+            } => Self::MismatchedResultCount { 
+                    input: input.clone(), 
+                    output: output.clone(), 
+                    result: result.clone() },
+            Self::ChildStdioIncomplete => Self::ChildStdioIncomplete,
+            Self::ChildBadReturn(arg0) => 
+                Self::ChildBadReturn(arg0.clone()),
+            #[cfg(not(feature = "nothread"))]
+            Self::ThreadUnjoinable => Self::ThreadUnjoinable,
+            Self::BrokenPKGBUILDs(arg0) => 
+                Self::BrokenPKGBUILDs(arg0.clone()),
+            Self::ParserScriptIllegalOutput(arg0) => 
+                Self::ParserScriptIllegalOutput(arg0.clone()),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl From<std::io::Error> for Error {
@@ -1608,7 +1633,7 @@ where
 
 /// The version without ordering, the one used for package itself, but not the
 /// one used when declaring dependency relationship.
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PlainVersion {
     pub epoch: String,
@@ -1701,7 +1726,7 @@ impl PlainVersion {
 }
 
 /// The dependency order, comparision is not implemented yet
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum DependencyOrder {
     Greater,
@@ -1730,7 +1755,7 @@ impl Display for DependencyOrder {
 }
 
 /// The dependency version, comparision is not implemented yet
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OrderedVersion {
     pub order: DependencyOrder,
@@ -1746,7 +1771,7 @@ impl Display for OrderedVersion {
 }
 
 /// A dependency
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dependency {
     pub name: String,
@@ -1816,7 +1841,7 @@ impl From<&[u8]> for Dependency {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Provide {
     pub name: String,
@@ -1864,7 +1889,7 @@ impl TryFrom<&[u8]> for Provide {
 }
 
 /// A sub-package parsed from a split-package `PKGBUILD`
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Package {
     /// The name of the split pacakge
@@ -2471,7 +2496,7 @@ impl From<&Source> for SourceWithInteg {
 }
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pkgbuild {
     pub pkgbase: String,
