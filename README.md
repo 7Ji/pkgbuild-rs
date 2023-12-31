@@ -12,34 +12,11 @@ Instead, it uses a Bash instance to run a dynamically generated, highly efficien
 Being **naive**, this avoids a lot of hacks needed in the Rust world to try to understand a Bash script and a lot of pitfalls that come with them.
 
 ### High efficiency
-The parser script is highly optimized and avoids a lot of pitfalls in the `libmakepkg` routine. The whole logic is dynamically assembled yet static during the parser lifetime. It wastes 0 time on stuffs the users do not want to parse.
+The parser script is highly optimized. The logic is dynamically assembled yet static during the parser lifetime. It wastes 0 time on stuffs the users do not want to parse.
 
 The whole parser script uses only `Bash` native logics and does not spawn child processes other than the subshells to extract package-specific variables, and even those are avoidable.
 
 _On a test against ArchLinux's 12406 official `PKGBUILD`s, the example `benchmark` executable took ~100 seconds when single-threaded and ~7.5 seconds when multi-threaded on an AMD Ryzen 1600X_
-
-### Lightweight
-With only the default features (`tempfile`) the library only needs 3 direct dependencies, and 8 dependencies in total:
-```
-> cargo tree
-pkgbuild v0.1.0 (/home/nomad7ji/Development/library/pkgbuild-rs)
-├── hex v0.4.3
-├── log v0.4.20
-└── tempfile v3.8.1
-    ├── cfg-if v1.0.0
-    ├── fastrand v2.0.1
-    └── rustix v0.38.26
-        ├── bitflags v2.4.1
-        └── linux-raw-sys v0.4.12
-```
-With no optional features, the library only needs 2 dependencies
-```
-> cargo tree
-pkgbuild v0.1.0 (/home/nomad7ji/Development/library/pkgbuild-rs)
-├── hex v0.4.3
-└── log v0.4.20
-```
-The library provides a lot of optional features and you can fine-tune them to meet your requirements without pulling in a giant dependency tree.
 
 ## Examples
 There are a couple few examples under [examples](examples), to run them, do like
