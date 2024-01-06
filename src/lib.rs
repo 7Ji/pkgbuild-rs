@@ -210,6 +210,8 @@ impl Display for Error {
     }
 }
 
+impl std::error::Error for Error {}
+
 /// The script builder to construct a `ParserScript` dynamically
 pub struct ParserScriptBuilder {
     /// The path to makepkg library, usually `/usr/share/makepkg` on an Arch 
