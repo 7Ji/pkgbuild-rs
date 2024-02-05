@@ -1,4 +1,4 @@
-use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, fmt::{Display, Formatter}};
+use std::{collections::HashMap, ffi::{OsString, OsStr}, fmt::{Display, Formatter}, io::{Write, BufWriter, Read}, os::unix::ffi::OsStrExt, path::{PathBuf, Path}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -257,35 +257,10 @@ pub struct ParserScriptBuilder {
     /// Default: `true`
     pub epoch: bool,
 
-    /// When dumping arrays like `depends` and `makedepends`, also dump the
-    /// values from the corresponding arch-specific array `depends_${CARCH}`
-    /// 
-    /// Note that different from `makepkg --printsrcinfo`, these values would
-    /// be included in the corresponding generic array and not considered arch-
-    /// specific anymore. 
-    /// 
-    /// I.e., with `CARCH=x86_64`, the following two `PKGBUILD`s yeild the same
-    /// `source` array:
-    /// 
-    /// `PKGBUILD`1:
-    /// ```Bash
-    /// source=('file1' 'file2')
-    /// source_x86_64=('file3')
-    /// ```
-    /// `PKGBUILD`2:
-    /// ```Bash
-    /// source=('file1' 'file2' 'file3')
-    /// ```
-    /// This is by-design as a repo builder should always handle all of its
-    /// native arch-specific vars as if they're generic. And to create seperate
-    /// arrays for each `CARCH` is simply impossible for a strongly-typed Rust-
-    /// native `Pkgbuild` structure, which could be freely set be a user, 
-    /// regardless of whether that's even an actual existing `CARCH`
-    /// 
-    /// The value `CARCH` should be set in `makepkg_config`
+    /// Should the parser dump `arch` from `PKGBUILD`
     /// 
     /// Default: `true`
-    pub arch_specific: bool,
+    pub arch: bool,
 
     /// Should the `depends` array be dumped. If not, then `depends` array in
     /// the parsed `Pkgbuild` struct would be empty. 
@@ -641,7 +616,7 @@ impl ParserScriptBuilder {
         writer.write_all(include_bytes!(
             "script/10_source_lib_config.bash"))?;
         let func_dump_array: &[u8] = 
-            if self.arch_specific {
+            if self.arch {
                 writer.write_all(include_bytes!(
                     "script/21_func_dump_array_with_optional_arch.bash"))?;
                 b"dump_array_with_optional_arch"
@@ -1389,8 +1364,39 @@ where
 #[derive(Default)]
 struct PackageParsing<'a> {
     pkgname: &'a [u8],
+    pkgdesc: &'a [u8],
+    url: &'a [u8],
+    license: Vec<&'a [u8]>,
+    groups: Vec<&'a [u8]>,
     depends: Vec<&'a [u8]>,
+    optdepends: Vec<&'a [u8]>,
     provides: Vec<&'a [u8]>,
+    conflicts: Vec<&'a [u8]>,
+    replaces: Vec<&'a [u8]>,
+    backup: Vec<&'a [u8]>,
+    options: Vec<&'a [u8]>,
+    install: &'a [u8],
+    changelog: &'a [u8],
+}
+
+#[derive(Default)]
+struct PkgbuildArchSpecificParsing<'a> {
+    sources: Vec<&'a [u8]>,
+    cksums: Vec<&'a [u8]>,
+    md5sums: Vec<&'a [u8]>,
+    sha1sums: Vec<&'a [u8]>,
+    sha224sums: Vec<&'a [u8]>,
+    sha256sums: Vec<&'a [u8]>,
+    sha384sums: Vec<&'a [u8]>,
+    sha512sums: Vec<&'a [u8]>,
+    b2sums: Vec<&'a [u8]>,
+    depends: Vec<&'a [u8]>,
+    makedepends: Vec<&'a [u8]>,
+    checkdepends: Vec<&'a [u8]>,
+    optdepends: Vec<&'a [u8]>,
+    conflicts: Vec<&'a [u8]>,
+    provides: Vec<&'a [u8]>,
+    replaces: Vec<&'a [u8]>,
 }
 
 /// A `PKGBUILD` being parsed. Library users should
@@ -1402,10 +1408,14 @@ struct PkgbuildParsing<'a> {
     pkgver: &'a [u8],
     pkgrel: &'a [u8],
     epoch: &'a [u8],
-    depends: Vec<&'a [u8]>,
-    makedepends: Vec<&'a [u8]>,
-    provides: Vec<&'a [u8]>,
+    pkgdesc: &'a [u8],
+    url: &'a [u8],
+    license: Vec<&'a [u8]>,
+    install: &'a [u8],
+    changelog: &'a [u8],
     sources: Vec<&'a [u8]>,
+    validgpgkeys: Vec<&'a [u8]>,
+    noextract: Vec<&'a [u8]>,
     cksums: Vec<&'a [u8]>,
     md5sums: Vec<&'a [u8]>,
     sha1sums: Vec<&'a [u8]>,
@@ -1414,6 +1424,17 @@ struct PkgbuildParsing<'a> {
     sha384sums: Vec<&'a [u8]>,
     sha512sums: Vec<&'a [u8]>,
     b2sums: Vec<&'a [u8]>,
+    groups: Vec<&'a [u8]>,
+    arch: HashMap<&'a [u8], Vec<PkgbuildArchSpecificParsing<'a>>>,
+    backups: Vec<&'a [u8]>,
+    depends: Vec<&'a [u8]>,
+    makedepends: Vec<&'a [u8]>,
+    checkdepends: Vec<&'a [u8]>,
+    optdepends: Vec<&'a [u8]>,
+    conflicts: Vec<&'a [u8]>,
+    provides: Vec<&'a [u8]>,
+    replaces: Vec<&'a [u8]>,
+    options: Vec<&'a [u8]>,
     pkgver_func: bool,
 }
 
@@ -1841,12 +1862,50 @@ impl From<&[u8]> for Dependency {
     }
 }
 
+pub type MakeDependency = Dependency;
+pub type CheckDependency = Dependency;
+
+#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct OptionalDependency {
+    pub dep: Dependency,
+    pub reason: String,
+}
+
+impl From<&str> for OptionalDependency {
+    fn from(value: &str) -> Self {
+        if let Some((dep, reason)) = 
+            value.split_once(": ") 
+        {
+            Self {
+                dep: dep.into(),
+                reason: reason.into(),
+            }
+        } else {
+            Self {
+                dep: value.into(),
+                reason: Default::default(),
+            }
+        }
+    }
+}
+
+impl From<&[u8]> for OptionalDependency {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
+    }
+}
+
+pub type Conflict = Dependency;
+
 #[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Provide {
     pub name: String,
     pub version: Option<PlainVersion>
 }
+
+pub type Replace = Dependency;
 
 #[cfg(feature = "format")]
 impl Display for Provide {
@@ -1894,10 +1953,21 @@ impl TryFrom<&[u8]> for Provide {
 pub struct Package {
     /// The name of the split pacakge
     pub pkgname: String,
+    pub pkgdesc: String,
+    pub url: String,
+    pub license: Vec<String>,
+    pub groups: Vec<String>,
     /// The dependencies of the split package
     pub depends: Vec<Dependency>,
+    pub optdepends: Vec<OptionalDependency>,
     /// What virtual packages does this package provide
     pub provides: Vec<Provide>,
+    pub conflicts: Vec<Conflict>,
+    pub replaces: Vec<Replace>,
+    pub backup: Vec<String>,
+    pub options: Options,
+    pub install: String,
+    pub changelog: String,
 }
 
 #[cfg(feature = "format")]
@@ -2495,6 +2565,86 @@ impl From<&Source> for SourceWithInteg {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SourceWithChecksum {
+    pub source: Source,
+    pub cksum: Option<Cksum>,
+    pub md5sum: Option<Md5sum>,
+    pub sha1sum: Option<Sha1sum>,
+    pub sha224sum: Option<Sha224sum>,
+    pub sha256sum: Option<Sha256sum>,
+    pub sha384sum: Option<Sha384sum>,
+    pub sha512sum: Option<Sha512sum>,
+    pub b2sum: Option<B2sum>,
+}
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Options {
+    pub strip: Option<bool>,
+    pub docs: Option<bool>,
+    pub libtool: Option<bool>,
+    pub staticlibs: Option<bool>,
+    pub emptydirs: Option<bool>,
+    pub zipman: Option<bool>,
+    pub ccache: Option<bool>,
+    pub distcc: Option<bool>,
+    pub buildflags: Option<bool>,
+    pub makeflags: Option<bool>,
+    pub debug: Option<bool>,
+    pub lto: Option<bool>,
+}
+
+impl<'a> From<&Vec<&'a [u8]>> for Options {
+    fn from(value: &Vec<&'a [u8]>) -> Self {
+        let mut options = Self::default();
+        for item in value.iter() {
+            if item.is_empty() { 
+                continue 
+            }
+            let mut item = *item;
+            let enable = item[0] != b'!';
+            if ! enable { 
+                item = &item[1..]; 
+                if item.is_empty() {
+                    continue 
+                }
+            }
+            match item {
+                b"strip" => options.strip = Some(enable),
+                b"docs" => options.docs = Some(enable),
+                b"libtool" => options.libtool = Some(enable),
+                b"staticlibs" => options.staticlibs = Some(enable),
+                b"emptydirs" => options.emptydirs = Some(enable),
+                b"zipman" => options.zipman = Some(enable),
+                b"ccache" => options.ccache = Some(enable),
+                b"distcc" => options.distcc = Some(enable),
+                b"buildflags" => options.buildflags = Some(enable),
+                b"makeflags" => options.makeflags = Some(enable),
+                b"debug" => options.debug = Some(enable),
+                b"lto" => options.lto = Some(enable),
+                _ => log::warn!("Unknown option {}", str_from_slice_u8!(item)),
+            }
+        }
+        options
+    }
+}
+
+/// A `PKGBUILD`'s arch-specific variables
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PkgbuildArchSpecific {
+    pub source: Vec<SourceWithChecksum>,
+    pub depends: Vec<Dependency>,
+    pub makedepends: Vec<MakeDependency>,
+    pub checkdepends: Vec<CheckDependency>,
+    pub optdepends: Vec<OptionalDependency>,
+    pub conflicts: Vec<Conflict>,
+    pub provides: Vec<Provide>,
+    pub replaces: Vec<Replace>,
+}
+
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -2502,25 +2652,25 @@ pub struct Pkgbuild {
     pub pkgbase: String,
     pub pkgs: Vec<Package>,
     pub version: PlainVersion,
+    pub pkgdesc: String,
+    pub url: String,
+    pub license: Vec<String>,
+    pub install: String,
+    pub changelog: String,
+    pub source: Vec<SourceWithChecksum>,
+    pub validpgpkeys: Vec<String>,
+    pub noextract: Vec<String>,
+    pub groups: Vec<String>,
+    pub arches: HashMap<String, Vec<PkgbuildArchSpecific>>,
+    pub backup: Vec<String>,
     pub depends: Vec<Dependency>,
-    pub makedepends: Vec<Dependency>,
+    pub makedepends: Vec<MakeDependency>,
+    pub checkdepends: Vec<CheckDependency>,
+    pub optdepends: Vec<OptionalDependency>,
+    pub conflicts: Vec<Conflict>,
     pub provides: Vec<Provide>,
-    pub sources: Vec<Source>,
-    pub cksums: Vec<Option<Cksum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub md5sums: Vec<Option<Md5sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha1sums: Vec<Option<Sha1sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha224sums: Vec<Option<Sha224sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha256sums: Vec<Option<Sha256sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha384sums: Vec<Option<Sha384sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha512sums: Vec<Option<Sha512sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub b2sums: Vec<Option<B2sum>>,
+    pub replaces: Vec<Replace>,
+    pub options: Options,
     pub pkgver_func: bool,
 }
 
@@ -2625,18 +2775,51 @@ impl Display for Pkgbuilds {
     }
 }
 
+fn vec_string_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<String> {
+    vec.iter().map(|item|string_from_slice_u8!(item)).collect()
+}
+
+fn vec_dep_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<Dependency> {
+    vec.iter().map(|item|(*item).into()).collect()
+}
+
+fn vec_optdep_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) 
+    -> Vec<OptionalDependency> 
+{
+    vec.iter().map(|item|(*item).into()).collect()
+}
+
+fn vec_provide_try_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) 
+    -> Result<Vec<Provide>> 
+{
+    let mut provides = Vec::new();
+    for item in vec.iter() {
+        provides.push((*item).try_into()?)
+    }
+    Ok(provides)
+}
+
 impl TryFrom<&PackageParsing<'_>> for Package {
     type Error = Error;
 
     fn try_from(value: &PackageParsing) -> Result<Self> {
-        let depends = value.depends.iter().map(
-            |depend|(*depend).into()).collect();
-        let mut provides = Vec::new();
-        for provide in value.provides.iter() {
-            provides.push(str_from_slice_u8!(provide).try_into()?)
-        }
-        let pkgname = string_from_slice_u8!(value.pkgname);
-        Ok(Self { pkgname, depends, provides })
+        Ok(Self { 
+            pkgname: string_from_slice_u8!(value.pkgname),
+            pkgdesc: string_from_slice_u8!(value.pkgdesc), 
+            url: string_from_slice_u8!(value.url),
+            license: vec_string_from_vec_slice_u8(&value.license),
+            groups: vec_string_from_vec_slice_u8(&value.groups),
+            depends: vec_dep_from_vec_slice_u8(&value.depends),
+            optdepends: vec_optdep_from_vec_slice_u8(&value.optdepends),
+            provides: vec_provide_try_from_vec_slice_u8(&value.provides)?,
+            conflicts: vec_dep_from_vec_slice_u8(&value.conflicts),
+            replaces: vec_dep_from_vec_slice_u8(&value.replaces),
+            backup: vec_string_from_vec_slice_u8(&value.backup),
+            options: (&value.options).into(),
+            install: string_from_slice_u8!(value.install),
+            changelog: string_from_slice_u8!(value.changelog),
+            
+         })
     }
 }
 
