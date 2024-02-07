@@ -1342,19 +1342,18 @@ enum ParsingState<'a> {
     PkgbuildArchSpecific (PkgbuildParsing<'a>, PkgbuildArchitectureParsing<'a>),
 }
 
-macro_rules! key_value_from_slice_u8 {
-    ($slice:ident, $key:ident, $value: ident) => {
-        let mut it = $slice.splitn(2, |byte|*byte == b':');
-        let $key = it.next().unwrap_or_default();
-        let $value = it.next().unwrap_or_default();
-    };
-}
-
 impl<'a> PkgbuildsParsing<'a> {
     fn from_parser_output(output: &'a Vec<u8>) -> Result<Self> {
         let mut pkgbuilds = Vec::new();
         let mut state = ParsingState::None;
         for line in output.split(|byte| *byte == b'\n') {
+            macro_rules! key_value_from_slice_u8 {
+                ($slice:ident, $key:ident, $value: ident) => {
+                    let mut it = $slice.splitn(2, |byte|*byte == b':');
+                    let $key = it.next().unwrap_or_default();
+                    let $value = it.next().unwrap_or_default();
+                };
+            }
             if line.is_empty() { continue }
             match state {
                 ParsingState::None => 
@@ -2530,37 +2529,6 @@ pub type Sha384sum = [u8; 48];
 pub type Sha512sum = [u8; 64];
 pub type B2sum = [u8; 64];
 
-/// A source with its integrity checksum. Do note that each source could have
-/// multiple integrity checksums defined. For efficiency this is not directly
-/// returned in the `Pkgbuild`. 
-pub struct SourceWithInteg {
-    pub source: Source,
-    pub cksum: Option<Cksum>,
-    pub md5sum: Option<Md5sum>,
-    pub sha1sum: Option<Sha1sum>,
-    pub sha224sum: Option<Sha224sum>,
-    pub sha256sum: Option<Sha256sum>,
-    pub sha384sum: Option<Sha384sum>,
-    pub sha512sum: Option<Sha512sum>,
-    pub b2sum: Option<B2sum>
-}
-
-impl From<&Source> for SourceWithInteg {
-    fn from(value: &Source) -> Self {
-        Self {
-            source: value.clone(),
-            cksum: None,
-            md5sum: None,
-            sha1sum: None,
-            sha224sum: None,
-            sha256sum: None,
-            sha384sum: None,
-            sha512sum: None,
-            b2sum: None,
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SourceWithChecksum {
@@ -2627,7 +2595,7 @@ impl<'a> From<&Vec<&'a [u8]>> for Options {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 enum Architecture {
     #[default]
     Any,
@@ -2639,6 +2607,12 @@ enum Architecture {
     // Arch Linux RSIC-V specific
     Riscv64,
     Other(String)
+}
+
+impl From<&[u8]> for Architecture {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
+    }
 }
 
 impl From<&str> for Architecture {
@@ -2673,7 +2647,7 @@ impl AsRef<str> for Architecture {
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PkgbuildArchSpecific {
-    pub source: Vec<SourceWithChecksum>,
+    pub sources_with_checksums: Vec<SourceWithChecksum>,
     pub depends: Vec<Dependency>,
     pub makedepends: Vec<MakeDependency>,
     pub checkdepends: Vec<CheckDependency>,
@@ -2805,85 +2779,149 @@ impl Display for Pkgbuilds {
     }
 }
 
+fn vec_items_from_vec_items<'a, I1: From<I2>, I2>(items: &'a Vec<I2>) -> Vec<I1>
+{
+    items.iter().map(|item|I1::from(*item)).collect()
+}
+
+fn vec_items_try_from_vec_items<'a, I1, I2>(items: &'a Vec<I2>) 
+-> Result<Vec<I1>>
+where
+    I1: TryFrom<I2>, Error: From<<I1 as TryFrom<I2>>::Error>
+{
+    let mut converted = Vec::new();
+    for item in items.iter() {
+        converted.push(I1::try_from(*item)?)
+    }
+    Ok(converted)
+}
+
+impl TryFrom<&PackageArchitectureParsing<'_>> for PackageArchSpecific {
+    type Error = Error;
+
+    fn try_from(value: &PackageArchitectureParsing<'_>) -> Result<Self> {
+        let provides = 
+            vec_items_try_from_vec_items(&value.provides)?;
+        Ok(Self {
+            depends: vec_items_from_vec_items(&value.depends),
+            optdepends: vec_items_from_vec_items(&value.optdepends),
+            provides,
+            conflicts: vec_items_from_vec_items(&value.conflicts),
+            replaces: vec_items_from_vec_items(&value.replaces),
+        })
+    }   
+}
+
 fn vec_string_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<String> {
     vec.iter().map(|item|string_from_slice_u8!(item)).collect()
-}
-
-fn vec_dep_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<Dependency> {
-    vec.iter().map(|item|(*item).into()).collect()
-}
-
-fn vec_optdep_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) 
-    -> Vec<OptionalDependency> 
-{
-    vec.iter().map(|item|(*item).into()).collect()
-}
-
-fn vec_provide_try_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) 
-    -> Result<Vec<Provide>> 
-{
-    let mut provides = Vec::new();
-    for item in vec.iter() {
-        provides.push((*item).try_into()?)
-    }
-    Ok(provides)
 }
 
 impl TryFrom<&PackageParsing<'_>> for Package {
     type Error = Error;
 
     fn try_from(value: &PackageParsing) -> Result<Self> {
+        let mut arches = 
+            HashMap::new();
+        for arch in value.arches.iter() {
+            let arch_value = 
+                PackageArchSpecific::try_from(arch)?;
+            if let Some(key) = 
+                arches.insert(Architecture::from(arch.arch), arch_value) 
+            {
+                log::error!("Duplicated architecture {}", 
+                    str_from_slice_u8!(arch.arch));
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
+        }
         Ok(Self { 
             pkgname: string_from_slice_u8!(value.pkgname),
             pkgdesc: string_from_slice_u8!(value.pkgdesc), 
             url: string_from_slice_u8!(value.url),
             license: vec_string_from_vec_slice_u8(&value.license),
             groups: vec_string_from_vec_slice_u8(&value.groups),
-            depends: vec_dep_from_vec_slice_u8(&value.depends),
-            optdepends: vec_optdep_from_vec_slice_u8(&value.optdepends),
-            provides: vec_provide_try_from_vec_slice_u8(&value.provides)?,
-            conflicts: vec_dep_from_vec_slice_u8(&value.conflicts),
-            replaces: vec_dep_from_vec_slice_u8(&value.replaces),
             backup: vec_string_from_vec_slice_u8(&value.backup),
             options: (&value.options).into(),
             install: string_from_slice_u8!(value.install),
             changelog: string_from_slice_u8!(value.changelog),
-            
+            arches
          })
     }
 }
 
-fn cksum_from_raw(raw: &&[u8]) -> Option<u32> {
-    if raw == b"SKIP" {
-        return None
+
+
+impl TryFrom<&PkgbuildArchitectureParsing<'_>> for PkgbuildArchSpecific {
+    type Error = Error;
+
+    fn try_from(value: &PkgbuildArchitectureParsing) -> Result<Self> {
+        let mut sources_with_checksums = Vec::new();
+        if ! value.sources.is_empty() {
+            let len = value.sources.len();
+            macro_rules! len_mismatch {
+                ($value:ident, $sums:ident, $len:ident) => {
+                    ! $value.$sums.is_empty() && $value.$sums.len() != $len
+                };
+            }
+            if len_mismatch!(value, cksums, len) ||
+                len_mismatch!(value, md5sums, len) ||
+                len_mismatch!(value, sha1sums, len) ||
+                len_mismatch!(value, sha224sums, len) ||
+                len_mismatch!(value, sha256sums, len) ||
+                len_mismatch!(value, sha384sums, len) ||
+                len_mismatch!(value, sha512sums, len) ||
+                len_mismatch!(value, b2sums, len)
+            {
+                log::error!("Lengths of sources and checksums mismatch");
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
+            for (id, source) in value.sources.iter().enumerate(){
+                let mut source_with_checksum = 
+                    SourceWithChecksum::default();
+                source_with_checksum.source = (*source).into();
+                let a = value.cksums;
+                if let Some(cksum) = value.cksums.get(id) {
+                    source_with_checksum.cksum = if cksum == b"SKIP" {
+                        None
+                    } else {
+                        String::from_utf8_lossy(cksum).parse().ok()
+                    }
+                }
+                macro_rules! hash_sum_from_hex {
+                    ($sum:ident, $sums:ident) => {
+                        if let Some($sum) = value.$sums.get(id) {
+                            source_with_checksum.$sum = if $sum == b"SKIP" {
+                                None
+                            } else {
+                                FromHex::from_hex($sum).ok()
+                            }
+                        }                        
+                    };
+                }
+                hash_sum_from_hex!(md5sum, md5sums);
+                hash_sum_from_hex!(sha1sum, sha1sums);
+                hash_sum_from_hex!(sha224sum, sha224sums);
+                hash_sum_from_hex!(sha256sum, sha256sums);
+                hash_sum_from_hex!(sha384sum, sha384sums);
+                hash_sum_from_hex!(sha512sum, sha512sums);
+                hash_sum_from_hex!(b2sum, b2sums);
+            }
+        }
+        let provides = 
+            vec_items_try_from_vec_items(&value.provides)?;
+        Ok (Self {
+            sources_with_checksums,
+            depends: vec_items_from_vec_items(&value.depends),
+            makedepends: vec_items_from_vec_items(&value.makedepends),
+            checkdepends: vec_items_from_vec_items(&value.checkdepends),
+            optdepends: vec_items_from_vec_items(&value.optdepends),
+            conflicts: vec_items_from_vec_items(&value.conflicts),
+            provides,
+            replaces: vec_items_from_vec_items(&value.replaces),
+        })
     }
-    #[cfg(feature = "unsafe_str")]
-    return unsafe{std::str::from_utf8_unchecked(raw)}.parse().ok();
-    #[cfg(not(feature = "unsafe_str"))]
-    String::from_utf8_lossy(raw).parse().ok()
 }
 
-fn cksums_from_raws<'a, I>(raws: I) -> Vec<Option<u32>> 
-where
-    I: IntoIterator<Item = &'a &'a [u8]>
-{
-    raws.into_iter().map(|raw|cksum_from_raw(raw)).collect()
-}
 
-fn hash_sum_from_hex<C: FromHex>(hex: &&[u8]) -> Option<C> {
-    if hex == b"SKIP" {
-        return None
-    }
-    FromHex::from_hex(hex).ok()
-}
-
-fn hash_sums_from_hexes<'a, I, C>(hexes: I) -> Vec<Option<C>> 
-where
-    I: IntoIterator<Item = &'a &'a [u8]>,
-    C: FromHex
-{
-    hexes.into_iter().map(|hex|hash_sum_from_hex(hex)).collect()
-}
 
 impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
     type Error = Error;
@@ -2893,31 +2931,36 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         for pkg in value.pkgs.iter() {
             pkgs.push(pkg.try_into()?)
         }
-        let mut provides = Vec::new();
-        for provide in value.provides.iter() {
-            provides.push((*provide).try_into()?)
+        let mut arches = 
+            HashMap::new();
+        for arch in value.arches.iter() {
+            let arch_value = 
+                PkgbuildArchSpecific::try_from(arch)?;
+            if let Some(key) = 
+                arches.insert(Architecture::from(arch.arch), arch_value) 
+            {
+                log::error!("Duplicated architecture {}", 
+                    str_from_slice_u8!(arch.arch));
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
         }
         Ok(Self {
             pkgbase: string_from_slice_u8!(value.pkgbase),
             pkgs,
             version: PlainVersion::from_raw(
                 value.epoch, value.pkgver, value.pkgrel),
-            depends: value.depends.iter().map(|depend|
-                (*depend).into()).collect(),
-            makedepends: value.makedepends.iter().map(|makedepend|
-                (*makedepend).into()).collect(),
-            provides,
-            sources: value.sources.iter().map(|source|
-                (*source).into()).collect(),
-            cksums: cksums_from_raws(&value.cksums),
-            md5sums: hash_sums_from_hexes(&value.md5sums),
-            sha1sums: hash_sums_from_hexes(&value.sha1sums),
-            sha224sums: hash_sums_from_hexes(&value.sha224sums),
-            sha256sums: hash_sums_from_hexes(&value.sha256sums),
-            sha384sums: hash_sums_from_hexes(&value.sha384sums),
-            sha512sums: hash_sums_from_hexes(&value.sha512sums),
-            b2sums: hash_sums_from_hexes(&value.b2sums),
-            pkgver_func: value.pkgver_func,
+            pkgdesc: string_from_slice_u8!(value.pkgdesc),
+            url: string_from_slice_u8!(value.url),
+            license: vec_string_from_vec_slice_u8(&value.license),
+            install: string_from_slice_u8!(value.install),
+            changelog: string_from_slice_u8!(value.changelog),
+            validpgpkeys: vec_string_from_vec_slice_u8(&value.validgpgkeys),
+            noextract: vec_string_from_vec_slice_u8(&value.noextract),
+            groups: vec_string_from_vec_slice_u8(&value.groups),
+            arches,
+            backup: vec_string_from_vec_slice_u8(&value.backups),
+            options: (&value.options).into(),
+            pkgver_func: value.pkgver_func
         })
     }
 }
@@ -2935,7 +2978,7 @@ impl TryFrom<&PkgbuildsParsing<'_>> for Pkgbuilds {
 }
 
 impl Pkgbuild {
-    pkg_iter_all_arch!(self, source, SourceWithChecksum);
+    pkg_iter_all_arch!(self, sources_with_checksums, SourceWithChecksum);
     pkg_iter_all_arch!(self, depends, Dependency);
     pkg_iter_all_arch!(self, makedepends, MakeDependency);
     pkg_iter_all_arch!(self, checkdepends, CheckDependency);
