@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}, sync::Arc};
+use std::{collections::HashMap, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -1366,7 +1366,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         return Err(Error::ParserScriptIllegalOutput(line.into()))
                     }
                 },
-                ParsingState::Pkgbuild(mut pkgbuild) => 
+                ParsingState::Pkgbuild(mut pkgbuild) => {
                 match line {
                     b"PACKAGE" => state = 
                         ParsingState::Package(pkgbuild, Default::default()),
@@ -1412,7 +1412,9 @@ impl<'a> PkgbuildsParsing<'a> {
                                     line.into()))
                             }
                         }
+                        state = ParsingState::Pkgbuild(pkgbuild)
                     }
+                }
                 },
                 ParsingState::Package(
                     mut pkgbuild, 
@@ -1445,10 +1447,11 @@ impl<'a> PkgbuildsParsing<'a> {
                                     line.into()))
                             }
                         }
+                        state = ParsingState::Package(pkgbuild, package)
                     }
                 },
                 ParsingState::PackageArchSpecific(
-                    mut pkgbuild, 
+                    pkgbuild, 
                     mut package, 
                     mut arch
                 ) => 
@@ -1474,6 +1477,8 @@ impl<'a> PkgbuildsParsing<'a> {
                                     line.into()))
                             }
                         }
+                        state = ParsingState::PackageArchSpecific(
+                            pkgbuild, package, arch)
                     }
                 },
                 ParsingState::PkgbuildArchSpecific(
@@ -1513,6 +1518,8 @@ impl<'a> PkgbuildsParsing<'a> {
                                     line.into()))
                             }
                         }
+                        state = ParsingState::PkgbuildArchSpecific(
+                            pkgbuild, arch)
                     }
                 },
             }
@@ -2596,7 +2603,7 @@ impl<'a> From<&Vec<&'a [u8]>> for Options {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
-enum Architecture {
+pub enum Architecture {
     #[default]
     Any,
     // Arch Linux specific
@@ -2779,15 +2786,19 @@ impl Display for Pkgbuilds {
     }
 }
 
-fn vec_items_from_vec_items<'a, I1: From<I2>, I2>(items: &'a Vec<I2>) -> Vec<I1>
+fn vec_items_from_vec_items<'a, I1, I2>(items: &'a Vec<&'a I2>) -> Vec<I1>
+where
+    I1: From<&'a I2>,
+    I2: ?Sized
 {
     items.iter().map(|item|I1::from(*item)).collect()
 }
 
-fn vec_items_try_from_vec_items<'a, I1, I2>(items: &'a Vec<I2>) 
+fn vec_items_try_from_vec_items<'a, I1, I2>(items: &'a Vec<&'a I2>) 
 -> Result<Vec<I1>>
 where
-    I1: TryFrom<I2>, Error: From<<I1 as TryFrom<I2>>::Error>
+    I1: TryFrom<&'a I2>, Error: From<<I1 as TryFrom<&'a I2>>::Error>,
+    I2: ?Sized
 {
     let mut converted = Vec::new();
     for item in items.iter() {
@@ -2825,7 +2836,7 @@ impl TryFrom<&PackageParsing<'_>> for Package {
         for arch in value.arches.iter() {
             let arch_value = 
                 PackageArchSpecific::try_from(arch)?;
-            if let Some(key) = 
+            if let Some(_) = 
                 arches.insert(Architecture::from(arch.arch), arch_value) 
             {
                 log::error!("Duplicated architecture {}", 
@@ -2878,7 +2889,6 @@ impl TryFrom<&PkgbuildArchitectureParsing<'_>> for PkgbuildArchSpecific {
                 let mut source_with_checksum = 
                     SourceWithChecksum::default();
                 source_with_checksum.source = (*source).into();
-                let a = value.cksums;
                 if let Some(cksum) = value.cksums.get(id) {
                     source_with_checksum.cksum = if cksum == b"SKIP" {
                         None
@@ -2904,6 +2914,7 @@ impl TryFrom<&PkgbuildArchitectureParsing<'_>> for PkgbuildArchSpecific {
                 hash_sum_from_hex!(sha384sum, sha384sums);
                 hash_sum_from_hex!(sha512sum, sha512sums);
                 hash_sum_from_hex!(b2sum, b2sums);
+                sources_with_checksums.push(source_with_checksum)
             }
         }
         let provides = 
@@ -2936,7 +2947,7 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         for arch in value.arches.iter() {
             let arch_value = 
                 PkgbuildArchSpecific::try_from(arch)?;
-            if let Some(key) = 
+            if let Some(_) = 
                 arches.insert(Architecture::from(arch.arch), arch_value) 
             {
                 log::error!("Duplicated architecture {}", 
