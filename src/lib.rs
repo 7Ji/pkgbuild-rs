@@ -1982,7 +1982,7 @@ impl Package {
 }
 
 #[cfg(feature = "format")]
-fn format_write_array<I, D>(f: &mut Formatter<'_>, array: I) 
+fn format_write_iter<I, D>(f: &mut Formatter<'_>, array: I) 
 -> std::fmt::Result 
 where
     I: IntoIterator<Item = D>,
@@ -2004,9 +2004,9 @@ where
 impl Display for Package {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{name: {}, depends: [", self.pkgname)?;
-        format_write_array(f, &self.depends)?;
+        format_write_iter(f, self.depends())?;
         write!(f, "], provides: [")?;
-        format_write_array(f, &self.provides)?;
+        format_write_iter(f, self.provides())?;
         write!(f, "]}}")
     }
 }
@@ -2559,6 +2559,34 @@ pub struct SourceWithChecksum {
     pub b2sum: Option<B2sum>,
 }
 
+#[cfg(feature = "format")]
+impl Display for SourceWithChecksum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{source: {}", self.source)?;
+        if let Some(cksum) = self.cksum {
+            write!(f, ", cksum: {}", cksum)?
+        }
+        macro_rules! write_cksum {
+            ($cksum: ident) => {
+                if let Some($cksum) = self.$cksum {
+                    write!(f, ", {}: ", stringify!($cksum))?;
+                    for byte in $cksum.iter() {
+                        write!(f, "{:02x}", byte)?
+                    }
+                }
+            };
+        }
+        write_cksum!(md5sum);
+        write_cksum!(sha1sum);
+        write_cksum!(sha224sum);
+        write_cksum!(sha256sum);
+        write_cksum!(sha384sum);
+        write_cksum!(sha512sum);
+        write_cksum!(b2sum);
+        write!(f, "}}")
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Options {
@@ -2693,87 +2721,71 @@ pub struct Pkgbuild {
     pub pkgver_func: bool,
 }
 
-#[cfg(feature = "format")]
-fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
--> std::fmt::Result 
-where
-    I: IntoIterator<Item = &'a Option<Cksum>>
-{
-    let mut start = false;
-    for item in array.into_iter() {
-        if start {
-            write!(f, ", ")?
-        } else {
-            start = true
-        }
-        if let Some(cksum) = item {
-            write!(f, "{:08x}", cksum)?
-        } else {
-            write!(f, "SKIP")?
-        }
-    }
-    Ok(())
-}
+// #[cfg(feature = "format")]
+// fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
+// -> std::fmt::Result 
+// where
+//     I: IntoIterator<Item = &'a Option<Cksum>>
+// {
+//     let mut start = false;
+//     for item in array.into_iter() {
+//         if start {
+//             write!(f, ", ")?
+//         } else {
+//             start = true
+//         }
+//         if let Some(cksum) = item {
+//             write!(f, "{:08x}", cksum)?
+//         } else {
+//             write!(f, "SKIP")?
+//         }
+//     }
+//     Ok(())
+// }
 
-#[cfg(feature = "format")]
-fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
--> std::fmt::Result 
-where
-    I: IntoIterator<Item = &'a Option<S>>,
-    S: AsRef<[u8]> + 'a
-{
+// #[cfg(feature = "format")]
+// fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
+// -> std::fmt::Result 
+// where
+//     I: IntoIterator<Item = &'a Option<S>>,
+//     S: AsRef<[u8]> + 'a
+// {
 
-    let mut start = false;
-    for item in array.into_iter() {
-        if start {
-            write!(f, ", ")?
-        } else {
-            start = true
-        }
-        if let Some(cksum) = item {
-            for byte in cksum.as_ref().iter() {
-                write!(f, "{:02x}", byte)?
-            }
-        } else {
-            write!(f, "SKIP")?
-        }
-    }
-    Ok(())
-}
+//     let mut start = false;
+//     for item in array.into_iter() {
+//         if start {
+//             write!(f, ", ")?
+//         } else {
+//             start = true
+//         }
+//         if let Some(cksum) = item {
+//             for byte in cksum.as_ref().iter() {
+//                 write!(f, "{:02x}", byte)?
+//             }
+//         } else {
+//             write!(f, "SKIP")?
+//         }
+//     }
+//     Ok(())
+// }
 
 #[cfg(feature = "format")]
 impl Display for Pkgbuild {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{base: {}, pkgs: [", self.pkgbase)?;
-        format_write_array(f, &self.pkgs)?;
+        format_write_iter(f, &self.pkgs)?;
         write!(f, "], version: {}", self.version)?;
         if self.pkgver_func {
             write!(f, " (has pkgver func)")?;
         }
         write!(f, ", depends: [")?;
-        format_write_array(f, &self.depends)?;
+        format_write_iter(f, self.depends())?;
         write!(f, "], makedepends: [")?;
-        format_write_array(f, &self.makedepends)?;
+        format_write_iter(f, self.makedepends())?;
         write!(f, "], provides: [")?;
-        format_write_array(f, &self.provides)?;
-        write!(f, "], sources: [")?;
-        format_write_array(f, &self.sources)?;
-        write!(f, "], cksums: [")?;
-        format_write_cksum_array(f, &self.cksums)?;
-        write!(f, "], md5sums: [")?;
-        format_write_integ_sums_array(f, &self.md5sums)?;
-        write!(f, "], sha1sums: [")?;
-        format_write_integ_sums_array(f, &self.sha1sums)?;
-        write!(f, "], sha224sums: [")?;
-        format_write_integ_sums_array(f, &self.sha224sums)?;
-        write!(f, "], sha256sums: [")?;
-        format_write_integ_sums_array(f, &self.sha256sums)?;
-        write!(f, "], sha384sums: [")?;
-        format_write_integ_sums_array(f, &self.sha384sums)?;
-        write!(f, "], sha512sums: [")?;
-        format_write_integ_sums_array(f, &self.sha512sums)?;
-        write!(f, "], b2sums: [")?;
-        format_write_integ_sums_array(f, &self.b2sums)?;
+        format_write_iter(f, self.provides())?;
+        write!(f, "], sources_with_checksums: [")?;
+        format_write_iter(f, self.sources_with_checksums())?;
         write!(f, "]}}")
     }
 }
