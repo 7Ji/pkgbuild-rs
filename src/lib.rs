@@ -1392,7 +1392,7 @@ impl<'a> PkgbuildsParsing<'a> {
                                 pkgbuild.validgpgkeys.push(value),
                             b"noextract" => pkgbuild.noextract.push(value),
                             b"groups" => pkgbuild.groups.push(value),
-                            b"backups" => pkgbuild.backups.push(value),
+                            b"backup" => pkgbuild.backups.push(value),
                             b"options" => pkgbuild.options.push(value),
                             b"pkgver_func" => match value {
                                 b"y" => pkgbuild.pkgver_func = true,
@@ -1421,7 +1421,7 @@ impl<'a> PkgbuildsParsing<'a> {
                     mut package
                 ) => 
                 match line {
-                    b"ARCH" => state = ParsingState::PackageArchSpecific(
+                    b"PACKAGEARCH" => state = ParsingState::PackageArchSpecific(
                         pkgbuild, package, Default::default()),
                     b"END" => {
                         pkgbuild.pkgs.push(package);
