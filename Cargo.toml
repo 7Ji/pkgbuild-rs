@@ -41,6 +41,7 @@ serde = ["dep:serde", "serde/derive", "serde_bytes"]
 tempfile = ["dep:tempfile"]
 unsafe_str = []
 vercmp = []
+srcinfo = ["format"]
 __msgpack = ["serde", "rmp-serde"]
 
 [[example]]
@@ -60,7 +61,7 @@ required-features = ["tempfile"]
 [[example]]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
-required-features = ["format", "tempfile"]
+required-features = ["srcinfo", "tempfile"]
 
 [[example]]
 name = "spawner"

@@ -1876,6 +1876,16 @@ impl From<&[u8]> for OptionalDependency {
     }
 }
 
+impl Display for OptionalDependency {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.dep)?;
+        if ! self.reason.is_empty() {
+            write!(f, " = {}", self.reason)?;
+        }
+        Ok(())
+    }
+}
+
 pub type Conflict = Dependency;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -2685,6 +2695,12 @@ impl AsRef<str> for Architecture {
     }
 }
 
+impl Display for Architecture {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
 
 /// A `PKGBUILD`'s arch-specific variables
 #[derive(Debug, Default, Clone)]
@@ -2971,6 +2987,7 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             let arch_value = 
                 PkgbuildArchSpecific::try_from(arch)?;
             if arch.arch == b"any" {
+                multiarch.any = arch_value;
                 continue
             }
             if let Some(_) = 
@@ -3023,4 +3040,94 @@ impl Pkgbuild {
     pkg_iter_all_arch!(self, conflicts, Conflict);
     pkg_iter_all_arch!(self, provides, Provide);
     pkg_iter_all_arch!(self, replaces, Replace);
+
+    /// Get a result similar to `makepkg --printsrcinfo`, useful for formatting
+    #[cfg(feature = "srcinfo")]
+    pub fn srcinfo<'a>(&'a self) -> Srcinfo<'a> {
+        Srcinfo { pkgbuild: self }
+    }
+}
+
+#[cfg(feature = "srcinfo")]
+pub struct Srcinfo<'a> {
+    pub pkgbuild: &'a Pkgbuild
+}
+
+impl<'a> Display for Srcinfo<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let pkgbuild = self.pkgbuild;
+        macro_rules! write_prefixed {
+            ($name: ident, $prefix: expr) => {
+                if ! $prefix.$name.is_empty() {
+                    writeln!(f, "\t{} = {}",  stringify!($name), $prefix.$name)?
+                }
+            };
+        }
+        macro_rules! write_plain {
+            ($item: ident) => {
+                if ! pkgbuild.$item.is_empty() {
+                    writeln!(f, "\t{} = {}", stringify!($item), pkgbuild.$item)?
+                }
+            };
+        }
+        macro_rules! write_array {
+            ($items: ident) => {
+                for item in &pkgbuild.$items {
+                    writeln!(f, "\t{} = {}", stringify!($items), item)?
+                }
+            };
+        }
+        writeln!(f, "pkgbase = {}", pkgbuild.pkgbase)?;
+        write_plain!(pkgdesc);
+        write_prefixed!(pkgver, pkgbuild.version);
+        write_prefixed!(pkgrel, pkgbuild.version);
+        write_prefixed!(epoch, pkgbuild.version);
+        write_plain!(url);
+        write_plain!(install);
+        write_plain!(changelog);
+        if pkgbuild.multiarch.arches.is_empty() {
+            writeln!(f, "\tarch = any")?
+        } else {
+            for (arch, arch_specific) in pkgbuild.multiarch.arches.iter() {
+                writeln!(f, "\tarch = {}", arch)?
+            }
+        }
+        write_array!(groups);
+        write_array!(license);
+        macro_rules! write_arch_array {
+            ($items: ident) => {
+                for item in &pkgbuild.multiarch.any.$items {
+                    writeln!(f, "\t{} = {}", stringify!($items), item)?
+                }
+            };
+        }
+        write_arch_array!(checkdepends);
+        write_arch_array!(makedepends);
+        write_arch_array!(depends);
+        write_arch_array!(optdepends);
+        write_arch_array!(provides);
+        write_arch_array!(conflicts);
+        write_arch_array!(replaces);
+        write_array!(noextract);
+        macro_rules! write_option {
+            // Base case:
+            ($option:ident) => {
+                if let Some(value) = pkgbuild.options.$option {
+                    write!(f, "\toptions = ")?;
+                    if ! value {
+                        write!(f, "!")?
+                    }
+                    writeln!(f, "{}", stringify!($option))?
+                }
+            };
+            ($option:ident, $($options:ident),+) => {
+                write_option!($option);
+                write_option!($($options), +)
+            }
+        }
+        write_option!(strip, docs, libtool, staticlibs, emptydirs, zipman,
+            ccache, distcc, buildflags, makeflags, debug, lto);
+        write_array!(backup);
+        Ok(())
+    }
 }
