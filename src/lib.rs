@@ -506,132 +506,133 @@ impl ParserScriptBuilder {
     where
         W: Sized + Write
     {
-        writer.write_all(b"LIBRARY='")?;
-        writer.write_all(self.makepkg_library.as_bytes())?;
-        writer.write_all(b"'\nMAKEPKG_CONF='")?;
-        writer.write_all(self.makepkg_config.as_bytes())?;
-        writer.write_all(b"'\n")?;
-        writer.write_all(include_bytes!(
-            "script/10_source_lib_config.bash"))?;
-        let func_dump_array: &[u8] = 
-            if self.arch {
-                writer.write_all(include_bytes!(
-                    "script/21_func_dump_array_with_optional_arch.bash"))?;
-                b"dump_array_with_optional_arch"
-            } else {
-                writer.write_all(include_bytes!(
-                    "script/20_func_dump_array.bash"))?;
-                b"dump_array"
-            };
-        if self.package_depends || self.package_makedepends {
-            writer.write_all(include_bytes!(
-                "script/22_func_extract_package_vars.bash"))?;
-        }
-        writer.write_all(include_bytes!("script/30_loop_start.bash"))?;
-        if self.pkgbase {
-            writer.write_all(b"echo \"base:${pkgbase}\"\n")?;
-        }
-        if self.pkgname {
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do \
-                                    echo \"name:${item}\"; done\n")?
-        } else {
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do \
-                                        unset -f package_\"${item}\"; \
-                                    done\n\
-                                    pkgname=\"${pkgbase}\"\n")?
-        }
-        if self.pkgver {
-            writer.write_all(b"echo \"ver:${pkgver}\"\n")?
-        }
-        if self.pkgrel {
-            writer.write_all(b"echo \"rel:${pkgrel}\"\n")?
-        }
-        if self.epoch {
-            writer.write_all(b"echo \"epoch:${epoch}\"\n")?
-        }
-        if self.depends {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" depends dep\n")?
-        }
-        if self.makedepends {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" makedepends makedep\n")?
-        }
-        if self.provides {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" provides provide\n")?
-        }
-        if self.source {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" source source\n")?
-        }
-        if self.cksums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" cksums ck\n")?
-        }
-        if self.md5sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" md5sums md5\n")?
-        }
-        if self.sha1sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha1sums sha1\n")?
-        }
-        if self.sha224sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha224sums sha224\n")?
-        }
-        if self.sha256sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha256sums sha256\n")?
-        }
-        if self.sha384sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha384sums sha384\n")?
-        }
-        if self.sha512sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha512sums sha512\n")?
-        }
-        if self.b2sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" b2sums b2\n")?
-        }
-        if self.pkgver_func {
-            writer.write_all(b"echo -n 'pkgver_func:'\n")?;
-            writer.write_all(b"[[ $(type -t pkgver) == 'function' ]] && \
-                                echo y || echo n\n")?
-        }
-        if self.pkgname && (self.package_depends || self.package_makedepends) {
-            writer.write_all(
-                b"unset -v {depends,provides}{,_\"${CARCH}\"}\n\
-                extract_package_vars\n")?;
-            if self.package_depends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" depends dep_\"${pkgbase}\"\n")?
-            }
-            if self.package_makedepends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" provides provide_\"${pkgbase}\"\n")?
-            }
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do\n\
-                unset -v {depends,provides}{,_\"${CARCH}\"}\n\
-                extract_package_vars _\"${item}\"\n")?;
-            if self.package_depends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" depends dep_\"${item}\"\n")?
-            }
-            if self.package_makedepends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" provides provide_\"${item}\"\n")?
-            }
-            writer.write_all(b"done\n")?
-        }
-        writer.write_all(b"unset -v pkgbase pkgname pkgver pkgrel epoch \
-            {depends,makedepends,provides,source,\
-            {ck,md5,sha{1,224,256,384,512},b2}sums}{,_\"${CARCH}\"}\n\
-            unset -f pkgver package\n\
-            done\n")
+        writer.write_all(include_bytes!("script/full.bash"))
+    //     writer.write_all(b"LIBRARY='")?;
+    //     writer.write_all(self.makepkg_library.as_bytes())?;
+    //     writer.write_all(b"'\nMAKEPKG_CONF='")?;
+    //     writer.write_all(self.makepkg_config.as_bytes())?;
+    //     writer.write_all(b"'\n")?;
+    //     writer.write_all(include_bytes!(
+    //         "script/10_source_lib_config.bash"))?;
+    //     let func_dump_array: &[u8] = 
+    //         if self.arch {
+    //             writer.write_all(include_bytes!(
+    //                 "script/21_func_dump_array_with_optional_arch.bash"))?;
+    //             b"dump_array_with_optional_arch"
+    //         } else {
+    //             writer.write_all(include_bytes!(
+    //                 "script/20_func_dump_array.bash"))?;
+    //             b"dump_array"
+    //         };
+    //     if self.package_depends || self.package_makedepends {
+    //         writer.write_all(include_bytes!(
+    //             "script/22_func_extract_package_vars.bash"))?;
+    //     }
+    //     writer.write_all(include_bytes!("script/30_loop_start.bash"))?;
+    //     if self.pkgbase {
+    //         writer.write_all(b"echo \"base:${pkgbase}\"\n")?;
+    //     }
+    //     if self.pkgname {
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do \
+    //                                 echo \"name:${item}\"; done\n")?
+    //     } else {
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do \
+    //                                     unset -f package_\"${item}\"; \
+    //                                 done\n\
+    //                                 pkgname=\"${pkgbase}\"\n")?
+    //     }
+    //     if self.pkgver {
+    //         writer.write_all(b"echo \"ver:${pkgver}\"\n")?
+    //     }
+    //     if self.pkgrel {
+    //         writer.write_all(b"echo \"rel:${pkgrel}\"\n")?
+    //     }
+    //     if self.epoch {
+    //         writer.write_all(b"echo \"epoch:${epoch}\"\n")?
+    //     }
+    //     if self.depends {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" depends dep\n")?
+    //     }
+    //     if self.makedepends {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" makedepends makedep\n")?
+    //     }
+    //     if self.provides {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" provides provide\n")?
+    //     }
+    //     if self.source {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" source source\n")?
+    //     }
+    //     if self.cksums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" cksums ck\n")?
+    //     }
+    //     if self.md5sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" md5sums md5\n")?
+    //     }
+    //     if self.sha1sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha1sums sha1\n")?
+    //     }
+    //     if self.sha224sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha224sums sha224\n")?
+    //     }
+    //     if self.sha256sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha256sums sha256\n")?
+    //     }
+    //     if self.sha384sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha384sums sha384\n")?
+    //     }
+    //     if self.sha512sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha512sums sha512\n")?
+    //     }
+    //     if self.b2sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" b2sums b2\n")?
+    //     }
+    //     if self.pkgver_func {
+    //         writer.write_all(b"echo -n 'pkgver_func:'\n")?;
+    //         writer.write_all(b"[[ $(type -t pkgver) == 'function' ]] && \
+    //                             echo y || echo n\n")?
+    //     }
+    //     if self.pkgname && (self.package_depends || self.package_makedepends) {
+    //         writer.write_all(
+    //             b"unset -v {depends,provides}{,_\"${CARCH}\"}\n\
+    //             extract_package_vars\n")?;
+    //         if self.package_depends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" depends dep_\"${pkgbase}\"\n")?
+    //         }
+    //         if self.package_makedepends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" provides provide_\"${pkgbase}\"\n")?
+    //         }
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do\n\
+    //             unset -v {depends,provides}{,_\"${CARCH}\"}\n\
+    //             extract_package_vars _\"${item}\"\n")?;
+    //         if self.package_depends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" depends dep_\"${item}\"\n")?
+    //         }
+    //         if self.package_makedepends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" provides provide_\"${item}\"\n")?
+    //         }
+    //         writer.write_all(b"done\n")?
+    //     }
+    //     writer.write_all(b"unset -v pkgbase pkgname pkgver pkgrel epoch \
+    //         {depends,makedepends,provides,source,\
+    //         {ck,md5,sha{1,224,256,384,512},b2}sums}{,_\"${CARCH}\"}\n\
+    //         unset -f pkgver package\n\
+    //         done\n")
     }
 
     /// Build a `ParserScript`, would could later be used to parse `PKGBUILD`s
@@ -1938,6 +1939,12 @@ pub struct PackageArchSpecific {
     pub replaces: Vec<Replace>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct MultiArch<T> {
+    pub any: T,
+    pub arches: HashMap<Architecture, T>,
+}
+
 /// A sub-package parsed from a split-package `PKGBUILD`
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -1952,14 +1959,16 @@ pub struct Package {
     pub options: Options,
     pub install: String,
     pub changelog: String,
-    pub arches: HashMap<Architecture, PackageArchSpecific>,
+    pub multiarch: MultiArch<PackageArchSpecific>,
 }
 
 macro_rules! pkg_iter_all_arch {
     ($pkg:ident, $var:ident, $type: ident) => {
         pub fn $var(&self) -> impl Iterator<Item = &$type> {
-            self.arches.iter().map(|(_, pkg_arch)|
-                pkg_arch.$var.iter()).flatten()
+            let iter_any = self.multiarch.any.$var.iter();
+            let iter_arches = self.multiarch.arches.iter()
+                .map(|(_, pkg_arch)|pkg_arch.$var.iter()).flatten();
+            iter_any.chain(iter_arches)
         }
     }
 }
@@ -2605,7 +2614,6 @@ impl<'a> From<&Vec<&'a [u8]>> for Options {
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Architecture {
     #[default]
-    Any,
     // Arch Linux specific
     X86_64,
     // Arch Linux ARM specific
@@ -2626,7 +2634,7 @@ impl From<&str> for Architecture {
     fn from(value: &str) -> Self {
         let arch = value.to_lowercase();
         match arch.as_str() {
-            "any" => Self::Any,
+            // "any" => Self::Any,
             "x86_64" => Self::X86_64,
             "aarch64" => Self::Aarch64,
             "armv7h" => Self::Armv7h,
@@ -2639,7 +2647,7 @@ impl From<&str> for Architecture {
 impl AsRef<str> for Architecture {
     fn as_ref(&self) -> &str {
         match self {
-            Architecture::Any => "any",
+            // Architecture::Any => "any",
             Architecture::X86_64 => "x86_64",
             Architecture::Aarch64 => "aarch64",
             Architecture::Armv7h => "armv7h",
@@ -2679,7 +2687,7 @@ pub struct Pkgbuild {
     pub validpgpkeys: Vec<String>,
     pub noextract: Vec<String>,
     pub groups: Vec<String>,
-    pub arches: HashMap<Architecture, PkgbuildArchSpecific>,
+    pub multiarch: MultiArch<PkgbuildArchSpecific>,
     pub backup: Vec<String>,
     pub options: Options,
     pub pkgver_func: bool,
@@ -2831,13 +2839,17 @@ impl TryFrom<&PackageParsing<'_>> for Package {
     type Error = Error;
 
     fn try_from(value: &PackageParsing) -> Result<Self> {
-        let mut arches = 
-            HashMap::new();
+        let mut multiarch 
+            = MultiArch::default();
         for arch in value.arches.iter() {
             let arch_value = 
                 PackageArchSpecific::try_from(arch)?;
-            if let Some(_) = 
-                arches.insert(Architecture::from(arch.arch), arch_value) 
+            if arch.arch == b"any" {
+                multiarch.any = arch_value;
+                continue
+            }
+            if let Some(_) = multiarch.arches.insert(
+                Architecture::from(arch.arch), arch_value) 
             {
                 log::error!("Duplicated architecture {}", 
                     str_from_slice_u8!(arch.arch));
@@ -2854,7 +2866,7 @@ impl TryFrom<&PackageParsing<'_>> for Package {
             options: (&value.options).into(),
             install: string_from_slice_u8!(value.install),
             changelog: string_from_slice_u8!(value.changelog),
-            arches
+            multiarch
          })
     }
 }
@@ -2942,13 +2954,15 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         for pkg in value.pkgs.iter() {
             pkgs.push(pkg.try_into()?)
         }
-        let mut arches = 
-            HashMap::new();
+        let mut multiarch = MultiArch::default();
         for arch in value.arches.iter() {
             let arch_value = 
                 PkgbuildArchSpecific::try_from(arch)?;
+            if arch.arch == b"any" {
+                continue
+            }
             if let Some(_) = 
-                arches.insert(Architecture::from(arch.arch), arch_value) 
+                multiarch.arches.insert(Architecture::from(arch.arch), arch_value) 
             {
                 log::error!("Duplicated architecture {}", 
                     str_from_slice_u8!(arch.arch));
@@ -2968,7 +2982,7 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
             validpgpkeys: vec_string_from_vec_slice_u8(&value.validgpgkeys),
             noextract: vec_string_from_vec_slice_u8(&value.noextract),
             groups: vec_string_from_vec_slice_u8(&value.groups),
-            arches,
+            multiarch,
             backup: vec_string_from_vec_slice_u8(&value.backups),
             options: (&value.options).into(),
             pkgver_func: value.pkgver_func
