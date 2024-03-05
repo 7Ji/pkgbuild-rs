@@ -89,7 +89,7 @@ while read -r line; do
   if [[ " ${_arch_collapsed} " =~ ' any ' ]]; then
     if [[ "${#_arch_collapsed}" != 5 ]]; then
       echo "ERROR: Architecture 'any' found when multiple architecture defined"
-      exit 1
+      exit 2
     fi
   else
     for _arch in "${arch[@]}"; do
@@ -116,7 +116,7 @@ while read -r line; do
     elif [[ $(type -t package) == function ]]; then
       if [[ "${_pkg_used}" ]]; then
         echo "Did not find package split function for ${_pkgname}"
-        exit 1
+        exit 3
       fi
       _pkg_func=package
       _pkg_used='y'
@@ -125,7 +125,7 @@ while read -r line; do
       continue
     else
       echo "No package split function for ${_pkgname}"
-      exit 1
+      exit 4
     fi
     unset -v pkgdesc url license groups backup options install changelog
     _ifs_stored="${IFS}"
@@ -146,7 +146,7 @@ while read -r line; do
           eval "${_line}"
         else
           echo 'Unfinished package value line'
-          exit 1
+          exit 5
         fi
       elif [[ "${_line}" =~ (license|groups|backup|options|depends|optdepends|provides|conflicts|replaces)'=('* ]]; then
         if [[ "${_line}" == *');' ]]; then
@@ -179,7 +179,7 @@ while read -r line; do
     if [[ " ${_arch_collapsed} " =~ ' any ' ]]; then
       if [[ "${#_arch_collapsed}" != 5 ]]; then
         echo "ERROR: Architecture 'any' found when multiple architecture defined"
-        exit 1
+        exit 6
       fi
     else
       for _arch in "${arch[@]}"; do

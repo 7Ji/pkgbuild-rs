@@ -506,12 +506,12 @@ impl ParserScriptBuilder {
     where
         W: Sized + Write
     {
+        writer.write_all(b"LIBRARY='")?;
+        writer.write_all(self.makepkg_library.as_bytes())?;
+        writer.write_all(b"'\nMAKEPKG_CONF='")?;
+        writer.write_all(self.makepkg_config.as_bytes())?;
+        writer.write_all(b"'\n")?;
         writer.write_all(include_bytes!("script/full.bash"))
-    //     writer.write_all(b"LIBRARY='")?;
-    //     writer.write_all(self.makepkg_library.as_bytes())?;
-    //     writer.write_all(b"'\nMAKEPKG_CONF='")?;
-    //     writer.write_all(self.makepkg_config.as_bytes())?;
-    //     writer.write_all(b"'\n")?;
     //     writer.write_all(include_bytes!(
     //         "script/10_source_lib_config.bash"))?;
     //     let func_dump_array: &[u8] = 
@@ -1083,7 +1083,7 @@ impl Parser {
         command.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .arg("-e")
+            // .arg("-e")
             .arg(self.script.as_ref());
         if let Some(work_dir) = &self.options.work_dir {
             command.current_dir(work_dir);
