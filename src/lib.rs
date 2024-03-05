@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
+use std::{collections::HashMap, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -2599,6 +2599,122 @@ impl Display for SourceWithChecksum {
 
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum PkgbuildOptionKey {
+    #[default]
+    Strip,
+    Docs,
+    LibTool,
+    StaticLibs,
+    EmptyDirs,
+    ZipMan,
+    CCache,
+    DistCC,
+    BuildFlags,
+    MakeFlags,
+    Debug,
+    Lto,
+}
+
+impl<'a> TryFrom<&'a [u8]> for PkgbuildOptionKey {
+    type Error = Error;
+
+    fn try_from(value: &'a [u8]) -> Result<Self> {
+        Ok(match value {
+            b"strip" => Self::Strip,
+            b"docs" => Self::Docs,
+            b"libtool" => Self::LibTool,
+            b"staticlibs" => Self::StaticLibs,
+            b"emptydirs" => Self::EmptyDirs,
+            b"zipman" => Self::ZipMan,
+            b"ccache" => Self::CCache,
+            b"distcc" => Self::DistCC,
+            b"buildflags" => Self::BuildFlags,
+            b"makeflags" => Self::MakeFlags,
+            b"debug" => Self::Debug,
+            b"lto" => Self::Lto,
+            _ => {
+                log::error!("Unknown option '{}'", str_from_slice_u8!(value));
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
+        })
+    }
+}
+
+impl AsRef<str> for PkgbuildOptionKey {
+    fn as_ref(&self) -> &str {
+        match self {
+            PkgbuildOptionKey::Strip => "strip",
+            PkgbuildOptionKey::Docs => "docs",
+            PkgbuildOptionKey::LibTool => "libtool",
+            PkgbuildOptionKey::StaticLibs => "staticlibs",
+            PkgbuildOptionKey::EmptyDirs => "emptydirs",
+            PkgbuildOptionKey::ZipMan => "zipman",
+            PkgbuildOptionKey::CCache => "ccache",
+            PkgbuildOptionKey::DistCC => "distcc",
+            PkgbuildOptionKey::BuildFlags => "buildflags",
+            PkgbuildOptionKey::MakeFlags => "makeflags",
+            PkgbuildOptionKey::Debug => "debug",
+            PkgbuildOptionKey::Lto => "lto",
+        }
+    }
+}
+
+impl Display for PkgbuildOptionKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PkgbuildOption {
+    pub key: PkgbuildOptionKey,
+    pub value: bool
+}
+
+impl Display for PkgbuildOption {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if ! self.value {
+            write!(f, "!")?;
+        }
+        write!(f, "{}", self.key.as_ref())
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+/// This is not clean, but we use this to respect the original order
+pub struct PkgbuildOptions {
+    options: Vec<PkgbuildOption>
+}
+
+impl<'a> From<&Vec<&'a [u8]>> for PkgbuildOptions {
+    fn from(value: &Vec<&'a [u8]>) -> Self {
+        let mut options = Self::default();
+        for item in value.iter() {
+            if item.is_empty() { 
+                continue 
+            }
+            let mut item = *item;
+            let enable = item[0] != b'!';
+            if ! enable { 
+                item = &item[1..]; 
+                if item.is_empty() {
+                    continue 
+                }
+            }
+            if let Ok(key) = item.try_into() {
+                options.options.push(PkgbuildOption { key, value: enable })
+            }
+        }
+        options
+    }
+}
+
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Options {
     pub strip: Option<bool>,
     pub docs: Option<bool>,
@@ -2612,6 +2728,30 @@ pub struct Options {
     pub makeflags: Option<bool>,
     pub debug: Option<bool>,
     pub lto: Option<bool>,
+}
+
+impl From<&PkgbuildOptions> for Options {
+    fn from(value: &PkgbuildOptions) -> Self {
+        let mut options = Self::default();
+        for option in value.options.iter() {
+            let value = Some(option.value);
+            match option.key {
+                PkgbuildOptionKey::Strip => options.strip = value,
+                PkgbuildOptionKey::Docs => options.docs = value,
+                PkgbuildOptionKey::LibTool => options.libtool = value,
+                PkgbuildOptionKey::StaticLibs => options.staticlibs = value,
+                PkgbuildOptionKey::EmptyDirs => options.emptydirs = value,
+                PkgbuildOptionKey::ZipMan => options.zipman = value,
+                PkgbuildOptionKey::CCache => options.ccache = value,
+                PkgbuildOptionKey::DistCC => options.distcc = value,
+                PkgbuildOptionKey::BuildFlags => options.buildflags = value,
+                PkgbuildOptionKey::MakeFlags => options.makeflags = value,
+                PkgbuildOptionKey::Debug => options.debug = value,
+                PkgbuildOptionKey::Lto => options.lto = value,
+            }
+        }
+        options
+    }
 }
 
 impl<'a> From<&Vec<&'a [u8]>> for Options {
@@ -2733,7 +2873,7 @@ pub struct Pkgbuild {
     pub groups: Vec<String>,
     pub multiarch: MultiArch<PkgbuildArchSpecific>,
     pub backup: Vec<String>,
-    pub options: Options,
+    pub options: PkgbuildOptions,
     pub pkgver_func: bool,
 }
 
@@ -3046,6 +3186,12 @@ impl Pkgbuild {
     pub fn srcinfo<'a>(&'a self) -> Srcinfo<'a> {
         Srcinfo { pkgbuild: self }
     }
+
+    /// Get a flattened list of options, note it would be impossible to go back
+    /// to the original order of options from only the result options.
+    pub fn options(&self) -> Options {
+        (&self.options).into()
+    }
 }
 
 #[cfg(feature = "srcinfo")]
@@ -3094,39 +3240,27 @@ impl<'a> Display for Srcinfo<'a> {
         }
         write_array!(groups);
         write_array!(license);
-        macro_rules! write_arch_array {
+        macro_rules! write_any_arch_array {
             ($items: ident) => {
                 for item in &pkgbuild.multiarch.any.$items {
                     writeln!(f, "\t{} = {}", stringify!($items), item)?
                 }
             };
         }
-        write_arch_array!(checkdepends);
-        write_arch_array!(makedepends);
-        write_arch_array!(depends);
-        write_arch_array!(optdepends);
-        write_arch_array!(provides);
-        write_arch_array!(conflicts);
-        write_arch_array!(replaces);
+        write_any_arch_array!(checkdepends);
+        write_any_arch_array!(makedepends);
+        write_any_arch_array!(depends);
+        write_any_arch_array!(optdepends);
+        write_any_arch_array!(provides);
+        write_any_arch_array!(conflicts);
+        write_any_arch_array!(replaces);
         write_array!(noextract);
-        macro_rules! write_option {
-            // Base case:
-            ($option:ident) => {
-                if let Some(value) = pkgbuild.options.$option {
-                    write!(f, "\toptions = ")?;
-                    if ! value {
-                        write!(f, "!")?
-                    }
-                    writeln!(f, "{}", stringify!($option))?
-                }
-            };
-            ($option:ident, $($options:ident),+) => {
-                write_option!($option);
-                write_option!($($options), +)
-            }
+        for option in pkgbuild.options.options.iter() {
+            writeln!(f, "\toptions = {}", option)?;
         }
-        write_option!(strip, docs, libtool, staticlibs, emptydirs, zipman,
-            ccache, distcc, buildflags, makeflags, debug, lto);
+        for source_with_checksum in pkgbuild.multiarch.any.sources_with_checksums.iter() {
+            writeln!(f, "\tsource = {}", source_with_checksum.source.get_pkgbuild_source())?;
+        }
         write_array!(backup);
         Ok(())
     }
