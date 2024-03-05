@@ -47,7 +47,7 @@ _pkg_array_items=(
   license groups backup options
 )
 _arch_specific_items=(
-  {source,{ck,md5,sha{1,224,256,384,512},b2}sum,{,make,check,opt}depend,conflict,provide,replace}s
+  source {{ck,md5,sha{1,224,256,384,512},b2}sum,{,make,check,opt}depend,conflict,provide,replace}s
 )
 _pkg_arch_specific_items=(
   {depend,optdepend,provide,conflict,replace}s

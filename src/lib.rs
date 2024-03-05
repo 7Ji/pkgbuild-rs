@@ -1495,7 +1495,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         key_value_from_slice_u8!(line, key, value);
                         match key {
                             b"arch" => arch.arch = value,
-                            b"sources" => arch.sources.push(value),
+                            b"source" => arch.sources.push(value),
                             b"cksums" => arch.cksums.push(value),
                             b"md5sums" => arch.md5sums.push(value),
                             b"sha1sums" => arch.sha1sums.push(value),
@@ -3062,7 +3062,14 @@ impl TryFrom<&PkgbuildArchitectureParsing<'_>> for PkgbuildArchSpecific {
                 len_mismatch!(value, sha512sums, len) ||
                 len_mismatch!(value, b2sums, len)
             {
-                log::error!("Lengths of sources and checksums mismatch");
+                log::error!("Lengths of sources and checksums mismatch, \
+                    sources: {}, cksums: {}, md5sums: {}, sha1sums: {} \
+                    sha224sums: {}, sha256sums: {}, sha384sums: {} \
+                    sha512sums: {}, b2sums: {}",
+                    value.sources.len(), value.cksums.len(), value.md5sums.len(),
+                    value.sha1sums.len(), value.sha224sums.len(), 
+                    value.sha256sums.len(), value.sha384sums.len(),
+                    value.sha512sums.len(), value.b2sums.len());
                 return Err(Error::BrokenPKGBUILDs(Default::default()))
             }
             for (id, source) in value.sources.iter().enumerate(){
@@ -3258,10 +3265,12 @@ impl<'a> Display for Srcinfo<'a> {
         for option in pkgbuild.options.options.iter() {
             writeln!(f, "\toptions = {}", option)?;
         }
+        write_array!(backup);
         for source_with_checksum in pkgbuild.multiarch.any.sources_with_checksums.iter() {
             writeln!(f, "\tsource = {}", source_with_checksum.source.get_pkgbuild_source())?;
         }
-        write_array!(backup);
+        write_array!(validpgpkeys);
+        
         Ok(())
     }
 }
