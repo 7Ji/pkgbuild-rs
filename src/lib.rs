@@ -3058,7 +3058,7 @@ impl TryFrom<&PackageArchitectureParsing<'_>> for PackageArchSpecific {
 }
 
 fn vec_string_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<String> {
-    vec.iter().map(|item|string_from_slice_u8!(item)).collect()
+    vec.iter().map(|item|string_from_slice_u8!(*item)).collect()
 }
 
 impl TryFrom<&PackageParsing<'_>> for Package {
