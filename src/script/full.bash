@@ -104,8 +104,8 @@ while read -r line; do
           eval "${_buffer}"
           _buffer=
         fi
-      elif [[ "${_line}" =~ (pkgdesc|url|install|changelog)'="' ]]; then
-        if [[ "${_line}" == *'";' ]]; then
+      elif [[ "${_line}" =~ (pkgdesc|url|install|changelog)'=' ]]; then
+        if [[ "${_line}" == *';' ]]; then
           eval "${_line}"
         else
           echo 'Unfinished package value line'
