@@ -3360,6 +3360,16 @@ impl<'a> Display for Srcinfo<'a> {
             sha512sum: bool,
             b2sum: bool,
         }
+        impl StatChecksum {
+            fn ensure_least(&mut self) {
+                if !(self.cksum || self.md5sum || self.sha1sum || self.sha224sum
+                    || self.sha256sum || self.sha384sum || self.sha512sum ||
+                    self.b2sum)
+                {
+                    self.sha256sum = true
+                }
+            }
+        }
         fn write_sources_and_stat_sums(f: &mut Formatter<'_>, arch_name: &str, arch_specific: &PkgbuildArchSpecific) -> std::result::Result<StatChecksum, std::fmt::Error> {
             let mut stat = StatChecksum::default();
             let title_temp;
@@ -3380,6 +3390,7 @@ impl<'a> Display for Srcinfo<'a> {
                 }
                 update_flag!(cksum, md5sum, sha1sum, sha224sum, sha256sum, sha384sum, sha512sum, b2sum);
             }
+            stat.ensure_least();
             Ok(stat)
         }
         let mut stat_checksums = write_sources_and_stat_sums(f, "", arch_specific)?;
