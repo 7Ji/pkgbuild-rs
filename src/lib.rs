@@ -3464,7 +3464,7 @@ impl<'a> Display for Srcinfo<'a> {
             writelns_indented_iter_display(f, "conflicts", &arch_specific.conflicts)?;
             writelns_indented_iter_display(f, "replaces", &arch_specific.replaces)?;
             write_option!(pkg.options);
-            writelns_indented_iter_str(f, "backup", &pkgbuild.backup)?;
+            writelns_indented_iter_str(f, "backup", &pkg.backup)?;
             for (arch, arch_specific) in pkg.multiarch.arches.iter() {
                 let arch_name = arch.as_ref();
                 writelns_indented_iter_display(f, &format!("provides_{}", arch_name), &arch_specific.provides)?;
