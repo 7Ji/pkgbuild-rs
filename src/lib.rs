@@ -1,3 +1,4 @@
+use core::arch;
 use std::{collections::{BTreeMap, HashMap}, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
@@ -1261,6 +1262,7 @@ where
 #[derive(Default, Debug)]
 struct PackageArchitectureParsing<'a> {
     arch: &'a [u8],
+    checkdepends: Vec<&'a [u8]>,
     depends: Vec<&'a [u8]>,
     optdepends: Vec<&'a [u8]>,
     provides: Vec<&'a [u8]>,
@@ -1465,6 +1467,7 @@ impl<'a> PkgbuildsParsing<'a> {
                         key_value_from_slice_u8!(line, key, value);
                         match key {
                             b"arch" => arch.arch = value,
+                            b"checkdepends" => arch.checkdepends.push(value),
                             b"depends" => arch.depends.push(value),
                             b"optdepends" => arch.optdepends.push(value),
                             b"provides" => arch.provides.push(value),
@@ -1876,11 +1879,12 @@ impl From<&[u8]> for OptionalDependency {
     }
 }
 
+#[cfg(feature = "format")]
 impl Display for OptionalDependency {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.dep)?;
         if ! self.reason.is_empty() {
-            write!(f, " = {}", self.reason)?;
+            write!(f, ": {}", self.reason)?;
         }
         Ok(())
     }
@@ -1940,6 +1944,7 @@ impl TryFrom<&[u8]> for Provide {
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PackageArchSpecific {
+    pub checkdepends: Vec<CheckDependency>,
     /// The dependencies of the split package
     pub depends: Vec<Dependency>,
     pub optdepends: Vec<OptionalDependency>,
@@ -1953,6 +1958,25 @@ pub struct PackageArchSpecific {
 pub struct MultiArch<T> {
     pub any: T,
     pub arches: BTreeMap<Architecture, T>,
+}
+
+pub fn multiarch_have_same_arches<T1, T2>(
+    some: &MultiArch<T1>, other: &MultiArch<T2>
+) -> bool 
+{
+    let this = &some.arches;
+    let that = &other.arches;
+    if this.is_empty() {
+        that.is_empty()
+    } else if that.is_empty() {
+        false
+    } else {
+        let mut arches_this: Vec<&Architecture> = this.keys().collect();
+        let mut arches_that: Vec<&Architecture> = that.keys().collect();
+        arches_this.sort_unstable();
+        arches_that.sort_unstable();
+        arches_this == arches_that
+    }
 }
 
 /// A sub-package parsed from a split-package `PKGBUILD`
@@ -2520,6 +2544,7 @@ impl Source {
         name
     }
 
+    #[cfg(feature = "format")]
     /// Convert to the format `PKGBUILD` uses in the `source` array
     pub fn get_pkgbuild_source(&self) -> String {
         let mut raw = String::new();
@@ -2818,31 +2843,6 @@ impl<'a> From<&Vec<&'a [u8]>> for Options {
     }
 }
 
-#[cfg(feature = "srcinfo")]
-struct OptionsSrcinfo<'a> {
-    options: &'a Options
-}
-
-#[cfg(feature = "srcinfo")]
-impl<'a> Display for OptionsSrcinfo<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let options = self.options;
-        macro_rules! write_option {
-            ($($option: ident),+) => {
-                $(
-                    if let Some(value) = options.$option {
-                        writeln!(f, "\toptions = {}{}", 
-                            if value {""} else {"!"}, stringify!($option))?
-                    }
-                )+
-            };
-        }
-        write_option!(strip, docs, libtool, staticlibs, emptydirs, zipman, 
-            ccache, distcc, buildflags, makeflags, debug, lto);
-        Ok(())
-    }
-}
-
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Architecture {
     #[default]
@@ -2909,6 +2909,56 @@ pub struct PkgbuildArchSpecific {
     pub provides: Vec<Provide>,
     pub replaces: Vec<Replace>,
 }
+
+// #[derive(Default)]
+// pub struct SourcesAndChecksums<'a> {
+//     sources: Vec<&'a Source>,
+//     cksums: Vec<Option<Cksum>>,
+//     md5sums: Vec<&'a Option<Md5sum>>,
+//     sha1sums: Vec<&'a Option<Sha1sum>>,
+//     sha224sums: Vec<&'a Option<Sha224sum>>,
+//     sha256sums: Vec<&'a Option<Sha256sum>>,
+//     sha384sums: Vec<&'a Option<Sha384sum>>,
+//     sha512sums: Vec<&'a Option<Sha512sum>>,
+//     b2sums: Vec<&'a Option<B2sum>>,
+// }
+
+// impl<'a> From<&'a PkgbuildArchSpecific> for SourcesAndChecksums<'a> {
+//     fn from(value: &'a PkgbuildArchSpecific) -> Self {
+//         let mut sources_and_checksums = Self::default();
+//         let mut cksums = false;
+//         let mut md5sums = false;
+
+//         for source_with_checksum in value.sources_with_checksums.iter() {
+//             sources_and_checksums.sources.push(&source_with_checksum.source);
+//             if let Some(cksum) = source_with_checksum.cksum {
+//                 sources_and_checksums.cksums.push(cksum)
+//             }
+//             macro_rules! push_and_check {
+//                 ($checksum: ident, $checksums: ident) => {
+
+//                     if let Some($checksum) = &source_with_checksum.$checksum {
+//                         sources_and_checksums.$checksums.push($checksum)
+//                     }
+//                 };
+//             }
+//             push_if_some!(md5sum, md5sums);
+//             push_if_some!(sha1sum, sha1sums);
+//             push_if_some!(sha224sum, sha224sums);
+//             push_if_some!(sha256sum, sha256sums);
+//             push_if_some!(sha384sum, sha384sums);
+//             push_if_some!(sha512sum, sha512sums);
+//             push_if_some!(b2sum, b2sums);
+//         }
+//         sources_and_checksums
+//     }
+// }
+
+// impl PkgbuildArchSpecific {
+//     pub fn sources_and_checksums(&self) -> SourcesAndChecksums {
+//         self.into()
+//     }
+// }
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug, Default, Clone)]
@@ -2996,6 +3046,7 @@ impl TryFrom<&PackageArchitectureParsing<'_>> for PackageArchSpecific {
         let provides = 
             vec_items_try_from_vec_items(&value.provides)?;
         Ok(Self {
+            checkdepends: vec_items_from_vec_items(&value.checkdepends),
             depends: vec_items_from_vec_items(&value.depends),
             optdepends: vec_items_from_vec_items(&value.optdepends),
             provides,
@@ -3215,170 +3266,204 @@ pub struct Srcinfo<'a> {
 #[cfg(feature = "srcinfo")]
 impl<'a> Display for Srcinfo<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let pkgbuild = self.pkgbuild;
-        fn write_indented<D: Display>(
+        fn writeln_indented_str<S: AsRef<str>>(
+            f: &mut Formatter<'_>, title: &str, content: S
+        ) -> std::fmt::Result 
+        {
+            let content = content.as_ref();
+            if content.is_empty() { return Ok(()) }
+            writeln!(f, "\t{} = {}", title, content)
+        }
+        fn writeln_indented_display<D: Display>(
             f: &mut Formatter<'_>, title: &str, content: D
         ) -> std::fmt::Result 
         {
-            write!(f, "\t{} = {}", title, content)
+            writeln_indented_str(f, title, &content.to_string())
         }
-        macro_rules! write_indented {
-            ($name: ident, d($value: expr)) => { // Not str but impls Display
-                write_indented!($name, format!("{}", $value));
-            };
-            ($name: ident, $value: expr) => { // Plain str
-                if ! $value.is_empty() {
-                    writeln!(f, "\t{} = {}", stringify!($name), $value)?
-                }
-            };
-        }
-        macro_rules! write_item {
-            ($name: ident, d($value: expr)) => {
-                write_indented!($name, d($value))
-            };
-            ($name: ident, $value: expr) => {
-                write_indented!($name, $value)
-            };
-        }
-        macro_rules! write_array {
-            ($name: ident, d($value: expr)) => {
-                for item in $value.iter() {
-                    write_item!($name, d(item));
-                }
-            };
-            ($name: ident, $value: expr) => {
-                for item in $value.iter() {
-                    write_item!($name, item);
-                }
-            };
-        }
+        let pkgbuild = self.pkgbuild;
         writeln!(f, "pkgbase = {}", pkgbuild.pkgbase)?;
-        write_item!(pkgdesc, pkgbuild.pkgdesc);
-        write_item!(pkgver, pkgbuild.version.pkgver);
-        write_item!(pkgrel, pkgbuild.version.pkgrel);
-        write_item!(epoch, pkgbuild.version.epoch);
-        write_item!(url, pkgbuild.url);
-        write_item!(install, pkgbuild.install);
-        write_item!(changelog, pkgbuild.changelog);
+        writeln_indented_str(f, "pkgdesc", &pkgbuild.pkgdesc)?;
+        writeln_indented_str(f, "pkgver", &pkgbuild.version.pkgver)?;
+        writeln_indented_str(f, "pkgrel", &pkgbuild.version.pkgrel)?;
+        writeln_indented_str(f, "epoch", &pkgbuild.version.epoch)?;
+        writeln_indented_str(f, "url", &pkgbuild.url)?;
+        writeln_indented_str(f, "install", &pkgbuild.install)?;
+        writeln_indented_str(f, "changelog", &pkgbuild.changelog)?;
         if pkgbuild.multiarch.arches.is_empty() {
-            write_indented!(arch, "any");
+            writeln_indented_str(f, "arch", "any")?;
         } else {
             for (arch, _) in pkgbuild.multiarch.arches.iter() {
-                write_indented!(arch, d(arch));
+                writeln_indented_str(f, "arch", arch)?;
             }
         }
-        write_array!(groups, pkgbuild.groups);
-        write_array!(license, pkgbuild.license);
-        let arch_specific = &pkgbuild.multiarch.any;
-        macro_rules! write_arch_array {
-            ($arch_name: ident, $arch_specific: ident, $($array:ident),+) => {
-                if $arch_name.is_empty() {
-                    $(
-                        write_array!($array, d($arch_specific.$array));
-                    )+
-                } else {
-                    $(
-                        for item in $arch_specific.$array.iter() {
-                            writeln!(f, "\t{}_{} = {}", 
-                                stringify!($array), $arch_name, item)?
-                        }
-                    )+
-                }
-            };
-        }
-        let mut arch_name = "";
-        write_arch_array!(arch_name, arch_specific, 
-            checkdepends, makedepends, depends, 
-            optdepends, provides, conflicts, replaces);
-        write_array!(noextract, pkgbuild.noextract);
-        write!(f, "{}", OptionsSrcinfo {options: &pkgbuild.options})?;
-        write_array!(backup, pkgbuild.backup);
-        fn write_sources_and_checksums(
-            f: &mut Formatter<'_>, 
-            sources_with_checksums: &Vec<SourceWithChecksum>
-        ) -> std::fmt::Result 
+        fn writelns_indented_iter_str<I, S>(
+            f: &mut Formatter<'_>, title: &str, contents: I
+        ) -> std::fmt::Result
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<str>
         {
-            let mut has_cksums = false;
-            let mut has_md5sums = false;
-            let mut has_sha1sums = false;
-            let mut has_sha224sums = false;
-            let mut has_sha256sums = false;
-            let mut has_sha384sums = false;
-            let mut has_sha512sums = false;
-            let mut has_b2sums = false;
-            macro_rules! update_bool_on_some {
-                ($var_bool: ident, $var_option: expr) => {
-                    if $var_option.is_some() {
-                        $var_bool = true
-                    }
-                };
-            }
-            for source_with_checksum in sources_with_checksums.iter() {
-                write_item!(source, source_with_checksum.source.get_pkgbuild_source());
-                update_bool_on_some!(has_cksums, source_with_checksum.cksum);
-
+            for content in contents.into_iter() {
+                writeln_indented_str(f, title, content)?
             }
             Ok(())
-
         }
-        write_sources_and_checksums(f, 
-                &pkgbuild.multiarch.any.sources_with_checksums)?;
-        
-        for source_with_checksum in 
-            pkgbuild.multiarch.any.sources_with_checksums.iter() 
+        fn writelns_indented_iter_display<I, D>(
+            f: &mut Formatter<'_>, title: &str, contents: I
+        ) -> std::fmt::Result
+        where
+            I: IntoIterator<Item = D>,
+            D: Display
         {
-            write_item!(source, source_with_checksum.source.get_pkgbuild_source())
-        }
-        for source_with_checksum in 
-            pkgbuild.multiarch.any.sources_with_checksums.iter() 
-        {
-            if let Some(cksum) = source_with_checksum.cksum {
-                writeln!(f, "\tcksums = {}", cksum)?
+            for content in contents.into_iter() {
+                writeln_indented_display(f, title, content)?
             }
+            Ok(())
         }
-        macro_rules! write_source_cksum {
-            ($($name: ident, $attr: ident), +) => {
+        writelns_indented_iter_str(f, "groups", &pkgbuild.groups)?;
+        writelns_indented_iter_str(f, "license", &pkgbuild.license)?;
+        let arch_specific = &pkgbuild.multiarch.any;
+        writelns_indented_iter_display(f, "checkdepends", &arch_specific.checkdepends)?;
+        writelns_indented_iter_display(f, "makedepends", &arch_specific.makedepends)?;
+        writelns_indented_iter_display(f, "depends", &arch_specific.depends)?;
+        writelns_indented_iter_display(f, "optdepends", &arch_specific.optdepends)?;
+        writelns_indented_iter_display(f, "provides", &arch_specific.provides)?;
+        writelns_indented_iter_display(f, "conflicts", &arch_specific.conflicts)?;
+        writelns_indented_iter_display(f, "replaces", &arch_specific.replaces)?;
+        writelns_indented_iter_str(f, "noextract", &pkgbuild.noextract)?;
+        macro_rules! write_option {
+            ($options: expr, $($option: ident),+) => {
                 $(
-                    for source_with_checksum in 
-                        pkgbuild.multiarch.any.sources_with_checksums.iter() 
-                    {
-                        if let Some(cksum) = source_with_checksum.$attr {
-                            write!(f, "\t{} = ", stringify!($name))?;
-                            write_byte_iter(f, cksum)?;
-                            writeln!(f)?
-                        }
+                    if let Some(value) = $options.$option {
+                        writeln!(f, "\toptions = {}{}", 
+                            if value {""} else {"!"}, stringify!($option))?
                     }
                 )+
             };
+            ($options: expr) => {
+                write_option!($options, strip, docs, libtool, staticlibs, emptydirs, zipman, 
+                    ccache, distcc, buildflags, makeflags, debug, lto);
+            };
         }
-        write_source_cksum!(
-            md5sums, md5sum, 
-            sha1sums, sha1sum,
-            sha224sums, sha224sum,
-            sha256sums, sha256sum,
-            sha384sums, sha384sum,
-            sha512sums, sha512sum,
-            b2sums, b2sum
-        );
-        for (arch, arch_specific) in 
-            pkgbuild.multiarch.arches.iter() 
-        {
-            arch_name = arch.as_ref();
-            write_arch_array!(arch_name, arch_specific, provides, conflicts, 
-                depends, replaces, optdepends, makedepends, checkdepends)
-        }
+        write_option!(pkgbuild.options);
 
+        writelns_indented_iter_str(f, "backup", &pkgbuild.backup)?;
+        #[derive(Default)]
+        struct StatChecksum {
+            cksum: bool,
+            md5sum: bool,
+            sha1sum: bool,
+            sha224sum: bool,
+            sha256sum: bool,
+            sha384sum: bool,
+            sha512sum: bool,
+            b2sum: bool,
+        }
+        fn write_sources_and_stat_sums(f: &mut Formatter<'_>, arch_name: &str, arch_specific: &PkgbuildArchSpecific) -> std::result::Result<StatChecksum, std::fmt::Error> {
+            let mut stat = StatChecksum::default();
+            let title_temp;
+            let title = if arch_name.is_empty() {
+                "source"
+            } else {
+                title_temp = format!("source_{}", arch_name);
+                &title_temp
+            };
+            for source_with_checksum in arch_specific.sources_with_checksums.iter() {
+                writeln_indented_str(f, title, source_with_checksum.source.get_pkgbuild_source())?;
+                macro_rules! update_flag {
+                    ($($cksum: ident),+) => {
+                        $(
+                            if source_with_checksum.$cksum.is_some() { stat.$cksum = true }
+                        )+
+                    };
+                }
+                update_flag!(cksum, md5sum, sha1sum, sha224sum, sha256sum, sha384sum, sha512sum, b2sum);
+            }
+            Ok(stat)
+        }
+        let mut stat_checksums = write_sources_and_stat_sums(f, "", arch_specific)?;
+        writelns_indented_iter_str(f, "validpgpkeys", &pkgbuild.validpgpkeys)?;
+        fn suffix_from_arch_name(arch_name: &str) -> String {
+            if arch_name.is_empty() {
+                String::new()
+            } else {
+                format!("_{}", arch_name)
+            }
+        }
+        fn write_all_checksums(f: &mut Formatter<'_>, stat_checksums: &StatChecksum, 
+            arch_name: &str, arch_specific: &PkgbuildArchSpecific
+        ) -> std::fmt::Result 
+        {
+            let suffix = suffix_from_arch_name(arch_name);
+            macro_rules! write_checksums {
+                ($($cksum: ident),+) => {$(
+                    if stat_checksums.$cksum {
+                        let title = format!("{}s{}", stringify!($cksum), suffix);
+                        for source_with_checksum in arch_specific.sources_with_checksums.iter() {
+                            if let Some(bytes) = source_with_checksum.$cksum {
+                                write!(f, "\t{} = ", &title)?;
+                                for byte in bytes.iter() {
+                                    write!(f, "{:02x}", byte)?;
+                                }
+                                writeln!(f)?
+                            } else {
+                                writeln_indented_str(f, &title, "SKIP")?
+                            }
+                        }
+                    }
+                )+};
+            }
+            write_checksums!(md5sum, sha1sum, sha224sum, sha256sum, sha384sum, sha512sum, b2sum);
+            Ok(())
+        }
+        write_all_checksums(f, &stat_checksums, "", &arch_specific)?;
+        for (arch, arch_specific) in pkgbuild.multiarch.arches.iter() {
+            let arch_name = arch.as_ref();
+            stat_checksums = write_sources_and_stat_sums(f, arch_name, arch_specific)?;
+            writelns_indented_iter_display(f, &format!("provides_{}", arch_name), &arch_specific.provides)?;
+            writelns_indented_iter_display(f, &format!("conflicts_{}", arch_name), &arch_specific.conflicts)?;
+            writelns_indented_iter_display(f, &format!("depends_{}", arch_name), &arch_specific.depends)?;
+            writelns_indented_iter_display(f, &format!("replaces_{}", arch_name), &arch_specific.replaces)?;
+            writelns_indented_iter_display(f, &format!("optdepends_{}", arch_name), &arch_specific.optdepends)?;
+            writelns_indented_iter_display(f, &format!("makedepends_{}", arch_name), &arch_specific.makedepends)?;
+            writelns_indented_iter_display(f, &format!("checkdepends_{}", arch_name), &arch_specific.checkdepends)?;
+            write_all_checksums(f, &stat_checksums, arch_name, arch_specific)?
+        }
         for pkg in pkgbuild.pkgs.iter() {
             writeln!(f, "\npkgname = {}", pkg.pkgname)?;
-            write_item!(pkgdesc, pkg.pkgdesc);
-            write_item!(url, pkg.url);
-            write_item!(install, pkg.install);
-            write_item!(changelog, pkg.changelog);
+            writeln_indented_str(f, "pkgdesc", &pkg.pkgdesc)?;
+            writeln_indented_str(f, "url", &pkg.url)?;
+            writeln_indented_str(f, "install", &pkg.install)?;
+            writeln_indented_str(f, "changelog", &pkg.changelog)?;
+            if ! multiarch_have_same_arches(&pkgbuild.multiarch, &pkg.multiarch) {
+                if pkg.multiarch.arches.is_empty() {
+                    writeln_indented_str(f, "arch", "any")?;
+                } else {
+                    for (arch, _) in pkg.multiarch.arches.iter() {
+                        writeln_indented_str(f, "arch", arch)?;
+                    }
+                }
+            }
+            writelns_indented_iter_str(f, "groups", &pkg.groups)?;
+            writelns_indented_iter_str(f, "license", &pkg.license)?;
             let arch_specific = &pkg.multiarch.any;
-
-
-
-
+            writelns_indented_iter_display(f, "checkdepends", &arch_specific.checkdepends)?;
+            writelns_indented_iter_display(f, "depends", &arch_specific.depends)?;
+            writelns_indented_iter_display(f, "optdepends", &arch_specific.optdepends)?;
+            writelns_indented_iter_display(f, "provides", &arch_specific.provides)?;
+            writelns_indented_iter_display(f, "conflicts", &arch_specific.conflicts)?;
+            writelns_indented_iter_display(f, "replaces", &arch_specific.replaces)?;
+            write_option!(pkg.options);
+            writelns_indented_iter_str(f, "backup", &pkgbuild.backup)?;
+            for (arch, arch_specific) in pkg.multiarch.arches.iter() {
+                let arch_name = arch.as_ref();
+                writelns_indented_iter_display(f, &format!("provides_{}", arch_name), &arch_specific.provides)?;
+                writelns_indented_iter_display(f, &format!("conflicts_{}", arch_name), &arch_specific.conflicts)?;
+                writelns_indented_iter_display(f, &format!("depends_{}", arch_name), &arch_specific.depends)?;
+                writelns_indented_iter_display(f, &format!("replaces_{}", arch_name), &arch_specific.replaces)?;
+                writelns_indented_iter_display(f, &format!("optdepends_{}", arch_name), &arch_specific.optdepends)?;
+                writelns_indented_iter_display(f, &format!("checkdepends_{}", arch_name), &arch_specific.checkdepends)?;
+            }
         }
         Ok(())
     }

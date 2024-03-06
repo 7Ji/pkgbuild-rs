@@ -1,44 +1,6 @@
 source "${LIBRARY}/"util.sh
 source "${LIBRARY}/"source.sh
 source_makepkg_config
-# dump_array() { #1: var name, 2: report name
-#   declare -n array="$1"
-#   local item
-#   for item in "${array[@]}"; do
-#     echo "$2:${item}"
-#   done
-# }
-# dump_array_with_optional_arch() { #1: var name, 2: report name
-#   declare -n array="$1"
-#   declare -n array_arch="$1_${CARCH}"
-#   local item
-#   for item in "${array[@]}" "${array_arch[@]}"; do
-#     echo "$2:${item}"
-#   done
-# }
-# extract_package_vars() { #1 suffix
-#   local ifs_stored="${IFS}"
-#   IFS=$'\n'
-#   local lines=($(declare -f package"$1"))
-#   IFS="${ifs_stored}"
-#   local buffer=
-#   for line in "${lines[@]:2:$((${#lines[@]}-3))}"; do 
-#     if [[ "${buffer}" ]]; then
-#       buffer+="
-#       ${line}"
-#       if [[ "${line}" == *');' ]]; then
-#         eval "${buffer}"
-#         buffer=
-#       fi
-#     elif [[ "${line}" =~ (depends|provides)'=('* ]]; then
-#       if [[ "${line}" == *');' ]]; then
-#         eval "${line}"
-#       else
-#         buffer="${line}"
-#       fi
-#     fi
-#   done
-# }
 
 _pkgbuild_array_items=(
   license validgpgkeys noextract groups backup options
@@ -128,6 +90,7 @@ while read -r line; do
       exit 4
     fi
     unset -v pkgdesc url license groups backup options install changelog
+    _arch_backup=("${arch[@]}")
     _ifs_stored="${IFS}"
     IFS=$'\n'
     _lines=($(declare -f "${_pkg_func}"))
@@ -148,7 +111,7 @@ while read -r line; do
           echo 'Unfinished package value line'
           exit 5
         fi
-      elif [[ "${_line}" =~ (license|groups|backup|options|depends|optdepends|provides|conflicts|replaces)'=('* ]]; then
+      elif [[ "${_line}" =~ (arch|license|groups|backup|options|depends|optdepends|provides|conflicts|replaces)'=('* ]]; then
         if [[ "${_line}" == *');' ]]; then
           eval "${_line}"
         else
@@ -196,12 +159,14 @@ while read -r line; do
         echo END
       done
     fi
+    if [[ "${arch[*]}" != "${_arch_collapsed}" ]]; then
+      arch=("${_arch_backup[@]}")
+    fi
     echo END
   done
   unset -v pkgdesc url license groups backup options install changelog
   unset -f package{,_"${pkgbase}"} "${pkgname[@]/#/package_}"
   echo END
-
   unset -v pkgbase pkgver pkgrel epoch pkgdesc url license install changelog \
     validgpgkeys noextract groups backups options
 done

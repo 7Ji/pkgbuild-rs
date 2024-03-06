@@ -35,7 +35,7 @@ optional = true
 version = "1.1"
 
 [features]
-default = ["tempfile", "srcinfo"]
+default = ["tempfile"]
 format = []
 nothread = ["libc", "nix/fs"]
 serde = ["dep:serde", "serde/derive", "serde_bytes"]
