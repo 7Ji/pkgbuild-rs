@@ -111,11 +111,11 @@ while read -r line; do
           echo 'Unfinished package value line'
           exit 5
         fi
-      elif [[ "${_line}" =~ (arch|license|groups|backup|options|depends|optdepends|provides|conflicts|replaces)'=('* ]]; then
+      elif [[ "${_line}" =~ ((arch|license|groups|backup|options)|(checkdepends|depends|optdepends|provides|conflicts|replaces)(|_.+))'=('* ]]; then
         if [[ "${_line}" == *');' ]]; then
           eval "${_line}"
         else
-          buffer="${_line}"
+          _buffer="${_line}"
         fi
       fi
     done
