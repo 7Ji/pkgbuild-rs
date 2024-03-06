@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
+use std::{collections::{BTreeMap, HashMap}, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -1952,7 +1952,7 @@ pub struct PackageArchSpecific {
 #[derive(Debug, Clone, Default)]
 pub struct MultiArch<T> {
     pub any: T,
-    pub arches: HashMap<Architecture, T>,
+    pub arches: BTreeMap<Architecture, T>,
 }
 
 /// A sub-package parsed from a split-package `PKGBUILD`
@@ -2533,7 +2533,7 @@ impl Source {
             None => "",
         };
         let proto_actual = self.protocol.get_proto_str();
-        match self.protocol {
+        match &self.protocol {
             SourceProtocol::Unknown | SourceProtocol::Local => (),
             _ =>
                 if proto_actual != proto_url {
@@ -2542,6 +2542,30 @@ impl Source {
                 }
         }
         raw.push_str(&self.url);
+        macro_rules! push_fragment {
+            ($fragment: ident) => {
+                if let Some(fragment) = $fragment {
+                    raw.push_str(&format!("#{}", fragment))
+                }
+            };
+        }
+        match &self.protocol {
+            SourceProtocol::Bzr { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Fossil { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Git { fragment, signed } => {
+                push_fragment!(fragment);
+                if *signed {
+                    raw.push_str("?signed")
+                }
+            },
+            SourceProtocol::Hg { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Svn { fragment } => 
+                push_fragment!(fragment),
+            _ => (),
+        };
         raw
     }
 }
@@ -2569,6 +2593,16 @@ pub struct SourceWithChecksum {
     pub b2sum: Option<B2sum>,
 }
 
+fn write_byte_iter<I>(f: &mut Formatter<'_>, bytes: I) -> std::fmt::Result 
+where
+    I: IntoIterator<Item = u8>
+{
+    for byte in bytes.into_iter() {
+        write!(f, "{:02x}", byte)?
+    }
+    Ok(())
+}
+
 #[cfg(feature = "format")]
 impl Display for SourceWithChecksum {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -2577,140 +2611,135 @@ impl Display for SourceWithChecksum {
             write!(f, ", cksum: {}", cksum)?
         }
         macro_rules! write_cksum {
-            ($cksum: ident) => {
-                if let Some($cksum) = self.$cksum {
-                    write!(f, ", {}: ", stringify!($cksum))?;
-                    for byte in $cksum.iter() {
-                        write!(f, "{:02x}", byte)?
+            ($($cksum: ident), +) => {
+                $(
+                    if let Some($cksum) = self.$cksum {
+                        write!(f, ", {}: ", stringify!($cksum))?;
+                        write_byte_iter(f, $cksum)?
                     }
-                }
+                )+
             };
         }
-        write_cksum!(md5sum);
-        write_cksum!(sha1sum);
-        write_cksum!(sha224sum);
-        write_cksum!(sha256sum);
-        write_cksum!(sha384sum);
-        write_cksum!(sha512sum);
-        write_cksum!(b2sum);
+        write_cksum!(md5sum, sha1sum, sha224sum, sha256sum, 
+            sha384sum, sha512sum, b2sum);
         write!(f, "}}")
     }
 }
 
-#[derive(Debug, Default, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum PkgbuildOptionKey {
-    #[default]
-    Strip,
-    Docs,
-    LibTool,
-    StaticLibs,
-    EmptyDirs,
-    ZipMan,
-    CCache,
-    DistCC,
-    BuildFlags,
-    MakeFlags,
-    Debug,
-    Lto,
-}
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// pub enum PkgbuildOptionKey {
+//     #[default]
+//     Strip,
+//     Docs,
+//     LibTool,
+//     StaticLibs,
+//     EmptyDirs,
+//     ZipMan,
+//     CCache,
+//     DistCC,
+//     BuildFlags,
+//     MakeFlags,
+//     Debug,
+//     Lto,
+// }
 
-impl<'a> TryFrom<&'a [u8]> for PkgbuildOptionKey {
-    type Error = Error;
+// impl<'a> TryFrom<&'a [u8]> for PkgbuildOptionKey {
+//     type Error = Error;
 
-    fn try_from(value: &'a [u8]) -> Result<Self> {
-        Ok(match value {
-            b"strip" => Self::Strip,
-            b"docs" => Self::Docs,
-            b"libtool" => Self::LibTool,
-            b"staticlibs" => Self::StaticLibs,
-            b"emptydirs" => Self::EmptyDirs,
-            b"zipman" => Self::ZipMan,
-            b"ccache" => Self::CCache,
-            b"distcc" => Self::DistCC,
-            b"buildflags" => Self::BuildFlags,
-            b"makeflags" => Self::MakeFlags,
-            b"debug" => Self::Debug,
-            b"lto" => Self::Lto,
-            _ => {
-                log::error!("Unknown option '{}'", str_from_slice_u8!(value));
-                return Err(Error::BrokenPKGBUILDs(Default::default()))
-            }
-        })
-    }
-}
+//     fn try_from(value: &'a [u8]) -> Result<Self> {
+//         Ok(match value {
+//             b"strip" => Self::Strip,
+//             b"docs" => Self::Docs,
+//             b"libtool" => Self::LibTool,
+//             b"staticlibs" => Self::StaticLibs,
+//             b"emptydirs" => Self::EmptyDirs,
+//             b"zipman" => Self::ZipMan,
+//             b"ccache" => Self::CCache,
+//             b"distcc" => Self::DistCC,
+//             b"buildflags" => Self::BuildFlags,
+//             b"makeflags" => Self::MakeFlags,
+//             b"debug" => Self::Debug,
+//             b"lto" => Self::Lto,
+//             _ => {
+//                 log::error!("Unknown option '{}'", str_from_slice_u8!(value));
+//                 return Err(Error::BrokenPKGBUILDs(Default::default()))
+//             }
+//         })
+//     }
+// }
 
-impl AsRef<str> for PkgbuildOptionKey {
-    fn as_ref(&self) -> &str {
-        match self {
-            PkgbuildOptionKey::Strip => "strip",
-            PkgbuildOptionKey::Docs => "docs",
-            PkgbuildOptionKey::LibTool => "libtool",
-            PkgbuildOptionKey::StaticLibs => "staticlibs",
-            PkgbuildOptionKey::EmptyDirs => "emptydirs",
-            PkgbuildOptionKey::ZipMan => "zipman",
-            PkgbuildOptionKey::CCache => "ccache",
-            PkgbuildOptionKey::DistCC => "distcc",
-            PkgbuildOptionKey::BuildFlags => "buildflags",
-            PkgbuildOptionKey::MakeFlags => "makeflags",
-            PkgbuildOptionKey::Debug => "debug",
-            PkgbuildOptionKey::Lto => "lto",
-        }
-    }
-}
+// impl AsRef<str> for PkgbuildOptionKey {
+//     fn as_ref(&self) -> &str {
+//         match self {
+//             PkgbuildOptionKey::Strip => "strip",
+//             PkgbuildOptionKey::Docs => "docs",
+//             PkgbuildOptionKey::LibTool => "libtool",
+//             PkgbuildOptionKey::StaticLibs => "staticlibs",
+//             PkgbuildOptionKey::EmptyDirs => "emptydirs",
+//             PkgbuildOptionKey::ZipMan => "zipman",
+//             PkgbuildOptionKey::CCache => "ccache",
+//             PkgbuildOptionKey::DistCC => "distcc",
+//             PkgbuildOptionKey::BuildFlags => "buildflags",
+//             PkgbuildOptionKey::MakeFlags => "makeflags",
+//             PkgbuildOptionKey::Debug => "debug",
+//             PkgbuildOptionKey::Lto => "lto",
+//         }
+//     }
+// }
 
-impl Display for PkgbuildOptionKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
-    }
-}
+// impl Display for PkgbuildOptionKey {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.as_ref())
+//     }
+// }
 
 
-#[derive(Debug, Default, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PkgbuildOption {
-    pub key: PkgbuildOptionKey,
-    pub value: bool
-}
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// pub struct PkgbuildOption {
+//     pub key: PkgbuildOptionKey,
+//     pub value: bool
+// }
 
-impl Display for PkgbuildOption {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if ! self.value {
-            write!(f, "!")?;
-        }
-        write!(f, "{}", self.key.as_ref())
-    }
-}
+// impl Display for PkgbuildOption {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         if ! self.value {
+//             write!(f, "!")?;
+//         }
+//         write!(f, "{}", self.key.as_ref())
+//     }
+// }
 
-#[derive(Debug, Default, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-/// This is not clean, but we use this to respect the original order
-pub struct PkgbuildOptions {
-    options: Vec<PkgbuildOption>
-}
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// /// This is not clean, but we use this to respect the original order
+// pub struct PkgbuildOptions {
+//     options: Vec<PkgbuildOption>
+// }
 
-impl<'a> From<&Vec<&'a [u8]>> for PkgbuildOptions {
-    fn from(value: &Vec<&'a [u8]>) -> Self {
-        let mut options = Self::default();
-        for item in value.iter() {
-            if item.is_empty() { 
-                continue 
-            }
-            let mut item = *item;
-            let enable = item[0] != b'!';
-            if ! enable { 
-                item = &item[1..]; 
-                if item.is_empty() {
-                    continue 
-                }
-            }
-            if let Ok(key) = item.try_into() {
-                options.options.push(PkgbuildOption { key, value: enable })
-            }
-        }
-        options
-    }
-}
+// impl<'a> From<&Vec<&'a [u8]>> for PkgbuildOptions {
+//     fn from(value: &Vec<&'a [u8]>) -> Self {
+//         let mut options = Self::default();
+//         for item in value.iter() {
+//             if item.is_empty() { 
+//                 continue 
+//             }
+//             let mut item = *item;
+//             let enable = item[0] != b'!';
+//             if ! enable { 
+//                 item = &item[1..]; 
+//                 if item.is_empty() {
+//                     continue 
+//                 }
+//             }
+//             if let Ok(key) = item.try_into() {
+//                 options.options.push(PkgbuildOption { key, value: enable })
+//             }
+//         }
+//         options
+//     }
+// }
 
 
 #[derive(Debug, Default, Clone)]
@@ -2730,29 +2759,29 @@ pub struct Options {
     pub lto: Option<bool>,
 }
 
-impl From<&PkgbuildOptions> for Options {
-    fn from(value: &PkgbuildOptions) -> Self {
-        let mut options = Self::default();
-        for option in value.options.iter() {
-            let value = Some(option.value);
-            match option.key {
-                PkgbuildOptionKey::Strip => options.strip = value,
-                PkgbuildOptionKey::Docs => options.docs = value,
-                PkgbuildOptionKey::LibTool => options.libtool = value,
-                PkgbuildOptionKey::StaticLibs => options.staticlibs = value,
-                PkgbuildOptionKey::EmptyDirs => options.emptydirs = value,
-                PkgbuildOptionKey::ZipMan => options.zipman = value,
-                PkgbuildOptionKey::CCache => options.ccache = value,
-                PkgbuildOptionKey::DistCC => options.distcc = value,
-                PkgbuildOptionKey::BuildFlags => options.buildflags = value,
-                PkgbuildOptionKey::MakeFlags => options.makeflags = value,
-                PkgbuildOptionKey::Debug => options.debug = value,
-                PkgbuildOptionKey::Lto => options.lto = value,
-            }
-        }
-        options
-    }
-}
+// impl From<&PkgbuildOptions> for Options {
+//     fn from(value: &PkgbuildOptions) -> Self {
+//         let mut options = Self::default();
+//         for option in value.options.iter() {
+//             let value = Some(option.value);
+//             match option.key {
+//                 PkgbuildOptionKey::Strip => options.strip = value,
+//                 PkgbuildOptionKey::Docs => options.docs = value,
+//                 PkgbuildOptionKey::LibTool => options.libtool = value,
+//                 PkgbuildOptionKey::StaticLibs => options.staticlibs = value,
+//                 PkgbuildOptionKey::EmptyDirs => options.emptydirs = value,
+//                 PkgbuildOptionKey::ZipMan => options.zipman = value,
+//                 PkgbuildOptionKey::CCache => options.ccache = value,
+//                 PkgbuildOptionKey::DistCC => options.distcc = value,
+//                 PkgbuildOptionKey::BuildFlags => options.buildflags = value,
+//                 PkgbuildOptionKey::MakeFlags => options.makeflags = value,
+//                 PkgbuildOptionKey::Debug => options.debug = value,
+//                 PkgbuildOptionKey::Lto => options.lto = value,
+//             }
+//         }
+//         options
+//     }
+// }
 
 impl<'a> From<&Vec<&'a [u8]>> for Options {
     fn from(value: &Vec<&'a [u8]>) -> Self {
@@ -2789,7 +2818,32 @@ impl<'a> From<&Vec<&'a [u8]>> for Options {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg(feature = "srcinfo")]
+struct OptionsSrcinfo<'a> {
+    options: &'a Options
+}
+
+#[cfg(feature = "srcinfo")]
+impl<'a> Display for OptionsSrcinfo<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let options = self.options;
+        macro_rules! write_option {
+            ($($option: ident),+) => {
+                $(
+                    if let Some(value) = options.$option {
+                        writeln!(f, "\toptions = {}{}", 
+                            if value {""} else {"!"}, stringify!($option))?
+                    }
+                )+
+            };
+        }
+        write_option!(strip, docs, libtool, staticlibs, emptydirs, zipman, 
+            ccache, distcc, buildflags, makeflags, debug, lto);
+        Ok(())
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Architecture {
     #[default]
     // Arch Linux specific
@@ -2873,57 +2927,9 @@ pub struct Pkgbuild {
     pub groups: Vec<String>,
     pub multiarch: MultiArch<PkgbuildArchSpecific>,
     pub backup: Vec<String>,
-    pub options: PkgbuildOptions,
+    pub options: Options,
     pub pkgver_func: bool,
 }
-
-// #[cfg(feature = "format")]
-// fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
-// -> std::fmt::Result 
-// where
-//     I: IntoIterator<Item = &'a Option<Cksum>>
-// {
-//     let mut start = false;
-//     for item in array.into_iter() {
-//         if start {
-//             write!(f, ", ")?
-//         } else {
-//             start = true
-//         }
-//         if let Some(cksum) = item {
-//             write!(f, "{:08x}", cksum)?
-//         } else {
-//             write!(f, "SKIP")?
-//         }
-//     }
-//     Ok(())
-// }
-
-// #[cfg(feature = "format")]
-// fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
-// -> std::fmt::Result 
-// where
-//     I: IntoIterator<Item = &'a Option<S>>,
-//     S: AsRef<[u8]> + 'a
-// {
-
-//     let mut start = false;
-//     for item in array.into_iter() {
-//         if start {
-//             write!(f, ", ")?
-//         } else {
-//             start = true
-//         }
-//         if let Some(cksum) = item {
-//             for byte in cksum.as_ref().iter() {
-//                 write!(f, "{:02x}", byte)?
-//             }
-//         } else {
-//             write!(f, "SKIP")?
-//         }
-//     }
-//     Ok(())
-// }
 
 #[cfg(feature = "format")]
 impl Display for Pkgbuild {
@@ -3194,11 +3200,11 @@ impl Pkgbuild {
         Srcinfo { pkgbuild: self }
     }
 
-    /// Get a flattened list of options, note it would be impossible to go back
-    /// to the original order of options from only the result options.
-    pub fn options(&self) -> Options {
-        (&self.options).into()
-    }
+    // /// Get a flattened list of options, note it would be impossible to go back
+    // /// to the original order of options from only the result options.
+    // pub fn options(&self) -> Options {
+    //     (&self.options).into()
+    // }
 }
 
 #[cfg(feature = "srcinfo")]
@@ -3206,71 +3212,174 @@ pub struct Srcinfo<'a> {
     pub pkgbuild: &'a Pkgbuild
 }
 
+#[cfg(feature = "srcinfo")]
 impl<'a> Display for Srcinfo<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let pkgbuild = self.pkgbuild;
-        macro_rules! write_prefixed {
-            ($name: ident, $prefix: expr) => {
-                if ! $prefix.$name.is_empty() {
-                    writeln!(f, "\t{} = {}",  stringify!($name), $prefix.$name)?
+        fn write_indented<D: Display>(
+            f: &mut Formatter<'_>, title: &str, content: D
+        ) -> std::fmt::Result 
+        {
+            write!(f, "\t{} = {}", title, content)
+        }
+        macro_rules! write_indented {
+            ($name: ident, d($value: expr)) => { // Not str but impls Display
+                write_indented!($name, format!("{}", $value));
+            };
+            ($name: ident, $value: expr) => { // Plain str
+                if ! $value.is_empty() {
+                    writeln!(f, "\t{} = {}", stringify!($name), $value)?
                 }
             };
         }
-        macro_rules! write_plain {
-            ($item: ident) => {
-                if ! pkgbuild.$item.is_empty() {
-                    writeln!(f, "\t{} = {}", stringify!($item), pkgbuild.$item)?
-                }
+        macro_rules! write_item {
+            ($name: ident, d($value: expr)) => {
+                write_indented!($name, d($value))
+            };
+            ($name: ident, $value: expr) => {
+                write_indented!($name, $value)
             };
         }
         macro_rules! write_array {
-            ($items: ident) => {
-                for item in &pkgbuild.$items {
-                    writeln!(f, "\t{} = {}", stringify!($items), item)?
+            ($name: ident, d($value: expr)) => {
+                for item in $value.iter() {
+                    write_item!($name, d(item));
+                }
+            };
+            ($name: ident, $value: expr) => {
+                for item in $value.iter() {
+                    write_item!($name, item);
                 }
             };
         }
         writeln!(f, "pkgbase = {}", pkgbuild.pkgbase)?;
-        write_plain!(pkgdesc);
-        write_prefixed!(pkgver, pkgbuild.version);
-        write_prefixed!(pkgrel, pkgbuild.version);
-        write_prefixed!(epoch, pkgbuild.version);
-        write_plain!(url);
-        write_plain!(install);
-        write_plain!(changelog);
+        write_item!(pkgdesc, pkgbuild.pkgdesc);
+        write_item!(pkgver, pkgbuild.version.pkgver);
+        write_item!(pkgrel, pkgbuild.version.pkgrel);
+        write_item!(epoch, pkgbuild.version.epoch);
+        write_item!(url, pkgbuild.url);
+        write_item!(install, pkgbuild.install);
+        write_item!(changelog, pkgbuild.changelog);
         if pkgbuild.multiarch.arches.is_empty() {
-            writeln!(f, "\tarch = any")?
+            write_indented!(arch, "any");
         } else {
-            for (arch, arch_specific) in pkgbuild.multiarch.arches.iter() {
-                writeln!(f, "\tarch = {}", arch)?
+            for (arch, _) in pkgbuild.multiarch.arches.iter() {
+                write_indented!(arch, d(arch));
             }
         }
-        write_array!(groups);
-        write_array!(license);
-        macro_rules! write_any_arch_array {
-            ($items: ident) => {
-                for item in &pkgbuild.multiarch.any.$items {
-                    writeln!(f, "\t{} = {}", stringify!($items), item)?
+        write_array!(groups, pkgbuild.groups);
+        write_array!(license, pkgbuild.license);
+        let arch_specific = &pkgbuild.multiarch.any;
+        macro_rules! write_arch_array {
+            ($arch_name: ident, $arch_specific: ident, $($array:ident),+) => {
+                if $arch_name.is_empty() {
+                    $(
+                        write_array!($array, d($arch_specific.$array));
+                    )+
+                } else {
+                    $(
+                        for item in $arch_specific.$array.iter() {
+                            writeln!(f, "\t{}_{} = {}", 
+                                stringify!($array), $arch_name, item)?
+                        }
+                    )+
                 }
             };
         }
-        write_any_arch_array!(checkdepends);
-        write_any_arch_array!(makedepends);
-        write_any_arch_array!(depends);
-        write_any_arch_array!(optdepends);
-        write_any_arch_array!(provides);
-        write_any_arch_array!(conflicts);
-        write_any_arch_array!(replaces);
-        write_array!(noextract);
-        for option in pkgbuild.options.options.iter() {
-            writeln!(f, "\toptions = {}", option)?;
+        let mut arch_name = "";
+        write_arch_array!(arch_name, arch_specific, 
+            checkdepends, makedepends, depends, 
+            optdepends, provides, conflicts, replaces);
+        write_array!(noextract, pkgbuild.noextract);
+        write!(f, "{}", OptionsSrcinfo {options: &pkgbuild.options})?;
+        write_array!(backup, pkgbuild.backup);
+        fn write_sources_and_checksums(
+            f: &mut Formatter<'_>, 
+            sources_with_checksums: &Vec<SourceWithChecksum>
+        ) -> std::fmt::Result 
+        {
+            let mut has_cksums = false;
+            let mut has_md5sums = false;
+            let mut has_sha1sums = false;
+            let mut has_sha224sums = false;
+            let mut has_sha256sums = false;
+            let mut has_sha384sums = false;
+            let mut has_sha512sums = false;
+            let mut has_b2sums = false;
+            macro_rules! update_bool_on_some {
+                ($var_bool: ident, $var_option: expr) => {
+                    if $var_option.is_some() {
+                        $var_bool = true
+                    }
+                };
+            }
+            for source_with_checksum in sources_with_checksums.iter() {
+                write_item!(source, source_with_checksum.source.get_pkgbuild_source());
+                update_bool_on_some!(has_cksums, source_with_checksum.cksum);
+
+            }
+            Ok(())
+
         }
-        write_array!(backup);
-        for source_with_checksum in pkgbuild.multiarch.any.sources_with_checksums.iter() {
-            writeln!(f, "\tsource = {}", source_with_checksum.source.get_pkgbuild_source())?;
-        }
-        write_array!(validpgpkeys);
+        write_sources_and_checksums(f, 
+                &pkgbuild.multiarch.any.sources_with_checksums)?;
         
+        for source_with_checksum in 
+            pkgbuild.multiarch.any.sources_with_checksums.iter() 
+        {
+            write_item!(source, source_with_checksum.source.get_pkgbuild_source())
+        }
+        for source_with_checksum in 
+            pkgbuild.multiarch.any.sources_with_checksums.iter() 
+        {
+            if let Some(cksum) = source_with_checksum.cksum {
+                writeln!(f, "\tcksums = {}", cksum)?
+            }
+        }
+        macro_rules! write_source_cksum {
+            ($($name: ident, $attr: ident), +) => {
+                $(
+                    for source_with_checksum in 
+                        pkgbuild.multiarch.any.sources_with_checksums.iter() 
+                    {
+                        if let Some(cksum) = source_with_checksum.$attr {
+                            write!(f, "\t{} = ", stringify!($name))?;
+                            write_byte_iter(f, cksum)?;
+                            writeln!(f)?
+                        }
+                    }
+                )+
+            };
+        }
+        write_source_cksum!(
+            md5sums, md5sum, 
+            sha1sums, sha1sum,
+            sha224sums, sha224sum,
+            sha256sums, sha256sum,
+            sha384sums, sha384sum,
+            sha512sums, sha512sum,
+            b2sums, b2sum
+        );
+        for (arch, arch_specific) in 
+            pkgbuild.multiarch.arches.iter() 
+        {
+            arch_name = arch.as_ref();
+            write_arch_array!(arch_name, arch_specific, provides, conflicts, 
+                depends, replaces, optdepends, makedepends, checkdepends)
+        }
+
+        for pkg in pkgbuild.pkgs.iter() {
+            writeln!(f, "\npkgname = {}", pkg.pkgname)?;
+            write_item!(pkgdesc, pkg.pkgdesc);
+            write_item!(url, pkg.url);
+            write_item!(install, pkg.install);
+            write_item!(changelog, pkg.changelog);
+            let arch_specific = &pkg.multiarch.any;
+
+
+
+
+        }
         Ok(())
     }
 }
