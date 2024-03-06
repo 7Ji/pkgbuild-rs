@@ -1,5 +1,4 @@
-use core::arch;
-use std::{collections::{BTreeMap, HashMap}, default, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
+use std::{collections::BTreeMap, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -2390,6 +2389,7 @@ impl Display for SourceProtocol {
     }
 }
 
+#[cfg(feature = "format")]
 impl SourceProtocol {
     fn get_proto_str(&self) -> &'static str {
         match self {
@@ -2618,6 +2618,7 @@ pub struct SourceWithChecksum {
     pub b2sum: Option<B2sum>,
 }
 
+#[cfg(feature = "format")]
 fn write_byte_iter<I>(f: &mut Formatter<'_>, bytes: I) -> std::fmt::Result 
 where
     I: IntoIterator<Item = u8>
@@ -3402,9 +3403,7 @@ impl<'a> Display for Srcinfo<'a> {
                         for source_with_checksum in arch_specific.sources_with_checksums.iter() {
                             if let Some(bytes) = source_with_checksum.$cksum {
                                 write!(f, "\t{} = ", &title)?;
-                                for byte in bytes.iter() {
-                                    write!(f, "{:02x}", byte)?;
-                                }
+                                write_byte_iter(f, bytes)?;
                                 writeln!(f)?
                             } else {
                                 writeln_indented_str(f, &title, "SKIP")?
