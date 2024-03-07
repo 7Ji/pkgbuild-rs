@@ -12,7 +12,7 @@ A fake downloader that pretends to download sources defined in a PKGBUILD, it do
 Parse all PKGBUILDs in arguments and dump the result onto stdout.
 
 ## printsrcinfo
-Parse a PKGBUILD in argument and print the info almost like how `makepkg --printsrcinfo` does, note that some fields like `desc` are missing by design, as the library currently doesn't dump and parse those fields.
+Parse a PKGBUILD in argument and print the info in the same format as `makepkg --printsrcinfo`
 
 ## spawner
 A simple multi-call program to spawn a child process to read PKGBUILD then read them back.
