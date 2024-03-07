@@ -419,7 +419,8 @@ impl ParserScriptBuilder {
         buffer_extend_indent(&mut buffer, 2);
         buffer.extend_from_slice(b"unset -v");
         for items in PACKAGE_PLAIN_ITEMS.iter().chain(
-            PACKAGE_ARRAY_ITEMS.iter()) 
+            PACKAGE_ARRAY_ITEMS.iter()).chain(
+            PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS.iter())
         {
             buffer.push(b' ');
             buffer.extend_from_slice(items);
