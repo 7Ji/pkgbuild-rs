@@ -21,8 +21,16 @@ _On a test against ArchLinux's 12406 official `PKGBUILD`s, the example `benchmar
 ## Examples
 There are a couple few examples under [examples](examples), to run them, do like
 ```
-cargo run --example printsrcinfo [path to pkgbuild]
+cargo run --example dump_all [path to pkgbuild]
 ```
+---
+You can also build and use some examples to replace part of the makepkg functionality, like:
+```
+cargo build --release --features srcinfo --example printsrcinfo 
+strip target/release/examples/printsrcinfo -o ~/bin/printsrcinfo
+```
+From now on you can run `~/bin/printsrcinfo` instead of `makepkg --printsrcinfo`, this is much much faster (0.017s vs 4.65s on `kodi-nexus-mpp-git`) and would help you greatly on PKGBUILD development.
+
 
 ## Usage
 There're a few structs in the library that would need to be created and used to parse `PKGBUILD`s.
@@ -106,7 +114,8 @@ let script = ParserScriptBuilder::new()
   - This uses a Rust native port of the `rpmvercmp()` function, just like in `pacman`. The result should be the same as `pacman`'s `vercmp` CLI utility.
 - `tempfile`: support creating parser script as `tempfile::NamedTempFile`, this is enabled by default.
   - If disabled, this would remove a whole dependency tree introduced by `tempfile`, but you'll have to explicitly set paths for the parser script.
-
+- `srcinfo` adds `srcinfo()` method to `Pkgbuild`, which generates a `Srcinfo` struct and could be used to format PKGBUILD into a format similiar to the output format of `makepkg --printsrcinfo`
+  - Only when this is enabled, would `Srcinfo` struct be available
 
 ## Security concern
 A Bash instance would be created to execute the built-in script, it would read the list of `PKGBUILD`s from its `stdin`, and outputs the parsed result to its `stdout`, which would then be parsed by the library into native Rust data structure.
