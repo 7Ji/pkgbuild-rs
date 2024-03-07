@@ -1,11 +1,11 @@
 fn main() {
-    let sources = pkgbuild::parse_one(
-        std::env::args_os().nth(1)).unwrap().get_sources_with_integ();
+    let pkgbuild = pkgbuild::parse_one(
+        std::env::args_os().nth(1)).unwrap();
     println!("Note: This does nothing to actually download the sources, but \
         just demonstrates how a program should use pkgbuild-rs's strongly \
         typed source to determine how to download them in Rust natively");
-    for source_with_integ in sources.iter() {
-        let source = &source_with_integ.source;
+    for source_with_checksum in pkgbuild.sources_with_checksums() {
+        let source = &source_with_checksum.source;
         println!("=> Downloading '{}' from '{}'...", source.name, source.url);
         match &source.protocol {
             pkgbuild::SourceProtocol::Unknown => 
@@ -58,7 +58,7 @@ fn main() {
                     println!(" -> Svn cloning...")
                 },
         };
-        if let Some(sha256sum) = source_with_integ.sha256sum {
+        if let Some(sha256sum) = source_with_checksum.sha256sum {
             print!(" -> Verifying sha256sum: ");
             for byte in sha256sum.iter() {
                 print!("{:02x}", byte)
