@@ -9,6 +9,15 @@ edition = "2021"
 hex = "0.4"
 log = "0.4"
 
+[dependencies.clap]
+optional = true
+version = "4.5"
+features = ["derive"]
+
+[dependencies.git2]
+optional = true
+version = "0.18"
+
 [dependencies.libc]
 optional = true
 version = "0.2"
@@ -16,6 +25,10 @@ version = "0.2"
 [dependencies.nix]
 optional = true
 version = "0.27"
+
+[dependencies.rmp-serde]
+optional = true
+version = "1.1"
 
 [dependencies.serde]
 optional = true
@@ -29,24 +42,30 @@ version = "0.11"
 optional = true
 version = "3.8"
 
-[dependencies.rmp-serde]
+[dependencies.url]
 optional = true
-version = "1.1"
+version = "2.5"
 
 [features]
 default = ["tempfile"]
 format = []
 nothread = ["libc", "nix/fs"]
 serde = ["dep:serde", "serde/derive", "serde_bytes"]
+srcinfo = ["format"]
 tempfile = ["dep:tempfile"]
 unsafe_str = []
 vercmp = []
-srcinfo = ["format"]
+__cachegit = ["clap", "git2", "url"]
 __msgpack = ["serde", "rmp-serde"]
 
 [[example]]
 name = "benchmark"
 path = "examples/benchmark.rs"
+
+[[example]]
+name = "cachegit"
+path = "examples/cachegit.rs"
+required-features = ["__cachegit"]
 
 [[example]]
 name = "download"
