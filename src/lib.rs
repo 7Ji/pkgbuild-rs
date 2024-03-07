@@ -1,4 +1,4 @@
-use std::{ffi::{OsString, OsStr}, path::{PathBuf, Path}, os::unix::ffi::OsStrExt, io::{Write, BufWriter, Read}, process::{Command, Stdio, Child, ChildStdin, ChildStdout, ChildStderr}, fmt::{Display, Formatter}};
+use std::{collections::BTreeMap, ffi::{OsStr, OsString}, fmt::{Display, Formatter}, io::{BufWriter, Read, Write}, os::unix::ffi::OsStrExt, path::{Path, PathBuf}, process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio}};
 
 use hex::FromHex;
 #[cfg(feature = "serde")]
@@ -259,35 +259,10 @@ pub struct ParserScriptBuilder {
     /// Default: `true`
     pub epoch: bool,
 
-    /// When dumping arrays like `depends` and `makedepends`, also dump the
-    /// values from the corresponding arch-specific array `depends_${CARCH}`
-    /// 
-    /// Note that different from `makepkg --printsrcinfo`, these values would
-    /// be included in the corresponding generic array and not considered arch-
-    /// specific anymore. 
-    /// 
-    /// I.e., with `CARCH=x86_64`, the following two `PKGBUILD`s yeild the same
-    /// `source` array:
-    /// 
-    /// `PKGBUILD`1:
-    /// ```Bash
-    /// source=('file1' 'file2')
-    /// source_x86_64=('file3')
-    /// ```
-    /// `PKGBUILD`2:
-    /// ```Bash
-    /// source=('file1' 'file2' 'file3')
-    /// ```
-    /// This is by-design as a repo builder should always handle all of its
-    /// native arch-specific vars as if they're generic. And to create seperate
-    /// arrays for each `CARCH` is simply impossible for a strongly-typed Rust-
-    /// native `Pkgbuild` structure, which could be freely set be a user, 
-    /// regardless of whether that's even an actual existing `CARCH`
-    /// 
-    /// The value `CARCH` should be set in `makepkg_config`
+    /// Should the parser dump `arch` from `PKGBUILD`
     /// 
     /// Default: `true`
-    pub arch_specific: bool,
+    pub arch: bool,
 
     /// Should the `depends` array be dumped. If not, then `depends` array in
     /// the parsed `Pkgbuild` struct would be empty. 
@@ -439,7 +414,7 @@ impl Default for ParserScriptBuilder {
             pkgver: true,
             pkgrel: true,
             epoch: true,
-            arch_specific: true,
+            arch: true,
             depends: true,
             makedepends: true,
             provides: true,
@@ -457,6 +432,15 @@ impl Default for ParserScriptBuilder {
             package_makedepends: true, 
         }
     }
+}
+
+macro_rules! set_bool {
+    ($item:ident, $func:ident, $var:ident) => {
+        pub fn $func(&mut $item, value: bool) -> &mut Self {
+            $item.$var = value;
+            $item
+        }
+    };
 }
 
 impl ParserScriptBuilder {
@@ -497,137 +481,26 @@ impl ParserScriptBuilder {
         self
     }
 
-    /// Set whether the `pkgbase` should be dumped from `PKGBUILD`
-    pub fn set_pkgbase(&mut self, pkgbase: bool) -> &mut Self {
-        self.pkgbase = pkgbase;
-        self
-    }
-
-    /// Set whether the `pkgname` array should be dumped from `PKGBUILD`.
-    /// 
-    /// Disabling this would also cause every `PKGBUILD` to be treated as if 
-    /// it is not a split-package `PKGBUILD`
-    pub fn set_pkgname(&mut self, pkgname: bool) -> &mut Self {
-        self.pkgname = pkgname;
-        self
-    }
-
-    /// Set whether the `pkgver` should be dumped from `PKGBUILD`
-    /// 
-    /// If disabled, the result field `version` would always have an empty 
-    /// `pkgver` field
-    pub fn set_pkgver(&mut self, pkgver: bool) -> &mut Self {
-        self.pkgver = pkgver;
-        self
-    }
-
-    /// Set whether the `pkgrel` should be dumped from `PKGBUILD`
-    /// 
-    /// If disabled, the result field `version` would always have an empty 
-    /// `pkgrel` field
-    pub fn set_pkgrel(&mut self, pkgrel: bool) -> &mut Self {
-        self.pkgrel = pkgrel;
-        self
-    }
-
-    /// Set whether the `epoch` should be dumped from `PKGBUILD`
-    /// 
-    /// If disabled, the result field `version` would always have an empty 
-    /// `epoch` field
-    pub fn set_epoch(&mut self, epoch: bool) -> &mut Self {
-        self.epoch = epoch;
-        self
-    }
-
-    /// Set whether the arch-specific array should be appended to the generic
-    /// array when dumping `source`, `depends`, etc
-    /// 
-    /// The arch should be set as `CARCH` in the `makepkg_conf`
-    /// 
-    /// If disabled, the parsing result is as if we're parsing on an unkown
-    /// architecture.
-    pub fn set_arch_specific(&mut self, arch_specific: bool) -> &mut Self {
-        self.arch_specific = arch_specific;
-        self
-    }
-
-    /// Set whether the `depends` array should be dumped
-    pub fn set_depends(&mut self, depends: bool) -> &mut Self {
-        self.depends = depends;
-        self
-    }
-
-    /// Set whether the `makedepends` array should be dumped
-    pub fn set_makedepends(&mut self, makedepends: bool) -> &mut Self {
-        self.makedepends = makedepends;
-        self
-    }
-
-    /// Set whether the `provides` array should be dumped
-    pub fn set_provides(&mut self, provides: bool) -> &mut Self {
-        self.provides = provides;
-        self
-    }
-
-    /// Set whether the `cksums` array should be dumped
-    pub fn set_cksums(&mut self, cksums: bool) -> &mut Self {
-        self.cksums = cksums;
-        self
-    }
-
-    pub fn set_md5sums(&mut self, md5sums: bool) -> &mut Self {
-        self.md5sums = md5sums;
-        self
-    }
-
-    pub fn set_sha1sums(&mut self, sha1sums: bool) -> &mut Self {
-        self.sha1sums = sha1sums;
-        self
-    }
-
-    pub fn set_sha224sums(&mut self, sha224sums: bool) -> &mut Self {
-        self.sha224sums = sha224sums;
-        self
-    }
-
-    pub fn set_sha256sums(&mut self, sha256sums: bool) -> &mut Self {
-        self.sha256sums = sha256sums;
-        self
-    }
-
-    pub fn set_sha384sums(&mut self, sha384sums: bool) -> &mut Self {
-        self.sha384sums = sha384sums;
-        self
-    }
-
-    pub fn set_sha512sums(&mut self, sha512sums: bool) -> &mut Self {
-        self.sha512sums = sha512sums;
-        self
-    }
-
-    pub fn set_b2sums(&mut self, b2sums: bool) -> &mut Self {
-        self.b2sums = b2sums;
-        self
-    }
-
-    pub fn set_pkgver_func(&mut self, pkgver_func: bool) -> &mut Self {
-        self.pkgver_func = pkgver_func;
-        self
-    }
-
-    /// Set whether the package-specific depends array should be dumped
-    pub fn set_package_depends(&mut self, package_depends: bool) -> &mut Self {
-        self.package_depends = package_depends;
-        self
-    }
-
-    /// Set whether the package-specific makedepends array should be dumped
-    pub fn set_package_makedepends(&mut self, package_makedepends: bool) 
-        -> &mut Self 
-    {
-        self.package_makedepends = package_makedepends;
-        self
-    }
+    set_bool!(self, set_pkgbase, pkgbase);
+    set_bool!(self, set_pkgname, pkgname);
+    set_bool!(self, set_pkgver, pkgver);
+    set_bool!(self, set_pkgrel, pkgrel);
+    set_bool!(self, set_epoch, epoch);
+    set_bool!(self, set_arch, arch);
+    set_bool!(self, set_depends, depends);
+    set_bool!(self, set_makedepends, makedepends);
+    set_bool!(self, set_provides, provides);
+    set_bool!(self, set_cksums, cksums);
+    set_bool!(self, set_md5sums, md5sums);
+    set_bool!(self, set_sha1sums, sha1sums);
+    set_bool!(self, set_sha224sums, sha224sums);
+    set_bool!(self, set_sha256sums, sha256sums);
+    set_bool!(self, set_sha384sums, sha384sums);
+    set_bool!(self, set_sha512sums, sha512sums);
+    set_bool!(self, set_b2sums, b2sums);
+    set_bool!(self, set_pkgver_func, pkgver_func);
+    set_bool!(self, set_package_depends, package_depends);
+    set_bool!(self, set_package_makedepends, package_makedepends);
 
     /// Write the script content into the writer, this is an internal routine
     /// called by `build()` to wrap the `std::io::Result` type
@@ -640,127 +513,128 @@ impl ParserScriptBuilder {
         writer.write_all(b"'\nMAKEPKG_CONF='")?;
         writer.write_all(self.makepkg_config.as_bytes())?;
         writer.write_all(b"'\n")?;
-        writer.write_all(include_bytes!(
-            "script/10_source_lib_config.bash"))?;
-        let func_dump_array: &[u8] = 
-            if self.arch_specific {
-                writer.write_all(include_bytes!(
-                    "script/21_func_dump_array_with_optional_arch.bash"))?;
-                b"dump_array_with_optional_arch"
-            } else {
-                writer.write_all(include_bytes!(
-                    "script/20_func_dump_array.bash"))?;
-                b"dump_array"
-            };
-        if self.package_depends || self.package_makedepends {
-            writer.write_all(include_bytes!(
-                "script/22_func_extract_package_vars.bash"))?;
-        }
-        writer.write_all(include_bytes!("script/30_loop_start.bash"))?;
-        if self.pkgbase {
-            writer.write_all(b"echo \"base:${pkgbase}\"\n")?;
-        }
-        if self.pkgname {
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do \
-                                    echo \"name:${item}\"; done\n")?
-        } else {
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do \
-                                        unset -f package_\"${item}\"; \
-                                    done\n\
-                                    pkgname=\"${pkgbase}\"\n")?
-        }
-        if self.pkgver {
-            writer.write_all(b"echo \"ver:${pkgver}\"\n")?
-        }
-        if self.pkgrel {
-            writer.write_all(b"echo \"rel:${pkgrel}\"\n")?
-        }
-        if self.epoch {
-            writer.write_all(b"echo \"epoch:${epoch}\"\n")?
-        }
-        if self.depends {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" depends dep\n")?
-        }
-        if self.makedepends {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" makedepends makedep\n")?
-        }
-        if self.provides {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" provides provide\n")?
-        }
-        if self.source {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" source source\n")?
-        }
-        if self.cksums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" cksums ck\n")?
-        }
-        if self.md5sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" md5sums md5\n")?
-        }
-        if self.sha1sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha1sums sha1\n")?
-        }
-        if self.sha224sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha224sums sha224\n")?
-        }
-        if self.sha256sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha256sums sha256\n")?
-        }
-        if self.sha384sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha384sums sha384\n")?
-        }
-        if self.sha512sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" sha512sums sha512\n")?
-        }
-        if self.b2sums {
-            writer.write_all(func_dump_array)?;
-            writer.write_all(b" b2sums b2\n")?
-        }
-        if self.pkgver_func {
-            writer.write_all(b"echo -n 'pkgver_func:'\n")?;
-            writer.write_all(b"[[ $(type -t pkgver) == 'function' ]] && \
-                                echo y || echo n\n")?
-        }
-        if self.pkgname && (self.package_depends || self.package_makedepends) {
-            writer.write_all(
-                b"unset -v {depends,provides}{,_\"${CARCH}\"}\n\
-                extract_package_vars\n")?;
-            if self.package_depends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" depends dep_\"${pkgbase}\"\n")?
-            }
-            if self.package_makedepends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" provides provide_\"${pkgbase}\"\n")?
-            }
-            writer.write_all(b"for item in \"${pkgname[@]}\"; do\n\
-                unset -v {depends,provides}{,_\"${CARCH}\"}\n\
-                extract_package_vars _\"${item}\"\n")?;
-            if self.package_depends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" depends dep_\"${item}\"\n")?
-            }
-            if self.package_makedepends {
-                writer.write_all(func_dump_array)?;
-                writer.write_all(b" provides provide_\"${item}\"\n")?
-            }
-            writer.write_all(b"done\n")?
-        }
-        writer.write_all(b"unset -v pkgbase pkgname pkgver pkgrel epoch \
-            {depends,makedepends,provides,source,\
-            {ck,md5,sha{1,224,256,384,512},b2}sums}{,_\"${CARCH}\"}\n\
-            unset -f pkgver package\n\
-            done\n")
+        writer.write_all(include_bytes!("script/full.bash"))
+    //     writer.write_all(include_bytes!(
+    //         "script/10_source_lib_config.bash"))?;
+    //     let func_dump_array: &[u8] = 
+    //         if self.arch {
+    //             writer.write_all(include_bytes!(
+    //                 "script/21_func_dump_array_with_optional_arch.bash"))?;
+    //             b"dump_array_with_optional_arch"
+    //         } else {
+    //             writer.write_all(include_bytes!(
+    //                 "script/20_func_dump_array.bash"))?;
+    //             b"dump_array"
+    //         };
+    //     if self.package_depends || self.package_makedepends {
+    //         writer.write_all(include_bytes!(
+    //             "script/22_func_extract_package_vars.bash"))?;
+    //     }
+    //     writer.write_all(include_bytes!("script/30_loop_start.bash"))?;
+    //     if self.pkgbase {
+    //         writer.write_all(b"echo \"base:${pkgbase}\"\n")?;
+    //     }
+    //     if self.pkgname {
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do \
+    //                                 echo \"name:${item}\"; done\n")?
+    //     } else {
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do \
+    //                                     unset -f package_\"${item}\"; \
+    //                                 done\n\
+    //                                 pkgname=\"${pkgbase}\"\n")?
+    //     }
+    //     if self.pkgver {
+    //         writer.write_all(b"echo \"ver:${pkgver}\"\n")?
+    //     }
+    //     if self.pkgrel {
+    //         writer.write_all(b"echo \"rel:${pkgrel}\"\n")?
+    //     }
+    //     if self.epoch {
+    //         writer.write_all(b"echo \"epoch:${epoch}\"\n")?
+    //     }
+    //     if self.depends {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" depends dep\n")?
+    //     }
+    //     if self.makedepends {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" makedepends makedep\n")?
+    //     }
+    //     if self.provides {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" provides provide\n")?
+    //     }
+    //     if self.source {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" source source\n")?
+    //     }
+    //     if self.cksums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" cksums ck\n")?
+    //     }
+    //     if self.md5sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" md5sums md5\n")?
+    //     }
+    //     if self.sha1sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha1sums sha1\n")?
+    //     }
+    //     if self.sha224sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha224sums sha224\n")?
+    //     }
+    //     if self.sha256sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha256sums sha256\n")?
+    //     }
+    //     if self.sha384sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha384sums sha384\n")?
+    //     }
+    //     if self.sha512sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" sha512sums sha512\n")?
+    //     }
+    //     if self.b2sums {
+    //         writer.write_all(func_dump_array)?;
+    //         writer.write_all(b" b2sums b2\n")?
+    //     }
+    //     if self.pkgver_func {
+    //         writer.write_all(b"echo -n 'pkgver_func:'\n")?;
+    //         writer.write_all(b"[[ $(type -t pkgver) == 'function' ]] && \
+    //                             echo y || echo n\n")?
+    //     }
+    //     if self.pkgname && (self.package_depends || self.package_makedepends) {
+    //         writer.write_all(
+    //             b"unset -v {depends,provides}{,_\"${CARCH}\"}\n\
+    //             extract_package_vars\n")?;
+    //         if self.package_depends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" depends dep_\"${pkgbase}\"\n")?
+    //         }
+    //         if self.package_makedepends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" provides provide_\"${pkgbase}\"\n")?
+    //         }
+    //         writer.write_all(b"for item in \"${pkgname[@]}\"; do\n\
+    //             unset -v {depends,provides}{,_\"${CARCH}\"}\n\
+    //             extract_package_vars _\"${item}\"\n")?;
+    //         if self.package_depends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" depends dep_\"${item}\"\n")?
+    //         }
+    //         if self.package_makedepends {
+    //             writer.write_all(func_dump_array)?;
+    //             writer.write_all(b" provides provide_\"${item}\"\n")?
+    //         }
+    //         writer.write_all(b"done\n")?
+    //     }
+    //     writer.write_all(b"unset -v pkgbase pkgname pkgver pkgrel epoch \
+    //         {depends,makedepends,provides,source,\
+    //         {ck,md5,sha{1,224,256,384,512},b2}sums}{,_\"${CARCH}\"}\n\
+    //         unset -f pkgver package\n\
+    //         done\n")
     }
 
     /// Build a `ParserScript`, would could later be used to parse `PKGBUILD`s
@@ -1211,7 +1085,7 @@ impl Parser {
         command.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .arg("-e")
+            // .arg("-e")
             .arg(self.script.as_ref());
         if let Some(work_dir) = &self.options.work_dir {
             command.current_dir(work_dir);
@@ -1386,27 +1260,36 @@ where
     Parser::new(script_path)?.parse_one(pkgbuild_path)
 }
 
-/// A sub-package parsed from a split-package `PKGBUILD`, borrowed variant
-/// during parsing. Library users should not used this.
-#[derive(Default)]
-struct PackageParsing<'a> {
-    pkgname: &'a [u8],
+#[derive(Default, Debug)]
+struct PackageArchitectureParsing<'a> {
+    arch: &'a [u8],
+    checkdepends: Vec<&'a [u8]>,
     depends: Vec<&'a [u8]>,
+    optdepends: Vec<&'a [u8]>,
     provides: Vec<&'a [u8]>,
+    conflicts: Vec<&'a [u8]>,
+    replaces: Vec<&'a [u8]>,
 }
 
-/// A `PKGBUILD` being parsed. Library users should
-/// not use this.
-#[derive(Default)]
-struct PkgbuildParsing<'a> {
-    pkgbase: &'a [u8],
-    pkgs: Vec<PackageParsing<'a>>,
-    pkgver: &'a [u8],
-    pkgrel: &'a [u8],
-    epoch: &'a [u8],
-    depends: Vec<&'a [u8]>,
-    makedepends: Vec<&'a [u8]>,
-    provides: Vec<&'a [u8]>,
+/// A sub-package parsed from a split-package `PKGBUILD`, borrowed variant
+/// during parsing. Library users should not used this.
+#[derive(Default, Debug)]
+struct PackageParsing<'a> {
+    pkgname: &'a [u8],
+    pkgdesc: &'a [u8],
+    url: &'a [u8],
+    license: Vec<&'a [u8]>,
+    groups: Vec<&'a [u8]>,
+    backup: Vec<&'a [u8]>,
+    options: Vec<&'a [u8]>,
+    install: &'a [u8],
+    changelog: &'a [u8],
+    arches: Vec<PackageArchitectureParsing<'a>>,
+}
+
+#[derive(Default, Debug)]
+struct PkgbuildArchitectureParsing<'a> {
+    arch: &'a [u8],
     sources: Vec<&'a [u8]>,
     cksums: Vec<&'a [u8]>,
     md5sums: Vec<&'a [u8]>,
@@ -1416,125 +1299,245 @@ struct PkgbuildParsing<'a> {
     sha384sums: Vec<&'a [u8]>,
     sha512sums: Vec<&'a [u8]>,
     b2sums: Vec<&'a [u8]>,
+    depends: Vec<&'a [u8]>,
+    makedepends: Vec<&'a [u8]>,
+    checkdepends: Vec<&'a [u8]>,
+    optdepends: Vec<&'a [u8]>,
+    conflicts: Vec<&'a [u8]>,
+    provides: Vec<&'a [u8]>,
+    replaces: Vec<&'a [u8]>,
+}
+
+/// A `PKGBUILD` being parsed. Library users should
+/// not use this.
+#[derive(Default, Debug)]
+struct PkgbuildParsing<'a> {
+    pkgbase: &'a [u8],
+    pkgs: Vec<PackageParsing<'a>>,
+    pkgver: &'a [u8],
+    pkgrel: &'a [u8],
+    epoch: &'a [u8],
+    pkgdesc: &'a [u8],
+    url: &'a [u8],
+    license: Vec<&'a [u8]>,
+    install: &'a [u8],
+    changelog: &'a [u8],
+    validgpgkeys: Vec<&'a [u8]>,
+    noextract: Vec<&'a [u8]>,
+    groups: Vec<&'a [u8]>,
+    arches: Vec<PkgbuildArchitectureParsing<'a>>,
+    backups: Vec<&'a [u8]>,
+    options: Vec<&'a [u8]>,
     pkgver_func: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct PkgbuildsParsing<'a> {
     entries: Vec<PkgbuildParsing<'a>>
+}
+
+#[derive(Debug)]
+enum ParsingState<'a> {
+    None,
+    Pkgbuild (PkgbuildParsing<'a>),
+    Package (PkgbuildParsing<'a>, PackageParsing<'a>),
+    PackageArchSpecific (PkgbuildParsing<'a>, 
+        PackageParsing<'a>, PackageArchitectureParsing<'a>),
+    PkgbuildArchSpecific (PkgbuildParsing<'a>, PkgbuildArchitectureParsing<'a>),
 }
 
 impl<'a> PkgbuildsParsing<'a> {
     fn from_parser_output(output: &'a Vec<u8>) -> Result<Self> {
         let mut pkgbuilds = Vec::new();
-        let mut pkgbuild = PkgbuildParsing::default();
-        let mut started = false;
+        let mut state = ParsingState::None;
         for line in output.split(|byte| *byte == b'\n') {
+            macro_rules! key_value_from_slice_u8 {
+                ($slice:ident, $key:ident, $value: ident) => {
+                    let mut it = $slice.splitn(2, |byte|*byte == b':');
+                    let $key = it.next().unwrap_or_default();
+                    let $value = it.next().unwrap_or_default();
+                };
+            }
             if line.is_empty() { continue }
-            if line.contains(&b':') {
-                let mut it =
-                    line.splitn(2, |byte| byte == &b':');
-                let key = match it.next() {
-                    Some(key) => key,
-                    None => {
-                        log::error!("Failed to get key from PKGBUILD, at line: \
-                            '{}'", str_from_slice_u8!(line));
-                        return Err(Error::BrokenPKGBUILDs(Vec::new()));
-                    },
-                };
-                let value = match it.next() {
-                    Some(value) => value,
-                    None => {
-                        log::error!("Failed to get value from PKGBUILD, at line\
-                            : '{}'", str_from_slice_u8!(line));
-                        return Err(Error::BrokenPKGBUILDs(Vec::new()));
-                    },
-                };
-                if it.next().is_some() {
-                    log::error!("PKGBUILD parsing line not sustained: '{}'", 
-                    str_from_slice_u8!(line));
-                    return Err(Error::ParserScriptIllegalOutput(line.into()));
-                }
-                match key {
-                    b"base" => pkgbuild.pkgbase = value,
-                    b"name" => {
-                        let mut pkg =
-                            PackageParsing::default();
-                        pkg.pkgname = value;
-                        pkgbuild.pkgs.push(pkg);
-                    },
-                    b"ver" => pkgbuild.pkgver = value,
-                    b"rel" => pkgbuild.pkgrel = value,
-                    b"epoch" => pkgbuild.epoch = value,
-                    b"dep" => pkgbuild.depends.push(value),
-                    b"makedep" => pkgbuild.makedepends.push(value),
-                    b"provide" => pkgbuild.provides.push(value),
-                    b"source" => pkgbuild.sources.push(value),
-                    b"ck" => pkgbuild.cksums.push(value),
-                    b"md5" => pkgbuild.md5sums.push(value),
-                    b"sha1" => pkgbuild.sha1sums.push(value),
-                    b"sha224" => pkgbuild.sha224sums.push(value),
-                    b"sha256" => pkgbuild.sha256sums.push(value),
-                    b"sha384" => pkgbuild.sha384sums.push(value),
-                    b"sha512" => pkgbuild.sha512sums.push(value),
-                    b"b2" => pkgbuild.b2sums.push(value),
-                    b"pkgver_func" => match value {
-                        b"y" => pkgbuild.pkgver_func = true,
-                        b"n" => pkgbuild.pkgver_func = false,
-                        _ => {
-                            log::error!("Unexpected value: {}",
-                                str_from_slice_u8!(value));
-                            return Err(Error::BrokenPKGBUILDs(Vec::new()))
-                        }
-                    }
+            match state {
+                ParsingState::None => 
+                match line {
+                    b"PKGBUILD" => state = ParsingState::Pkgbuild(
+                                        PkgbuildParsing::default()),
                     _ => {
-                        let (offset, is_dep) =
-                        if key.starts_with(b"dep_") {(4, true)}
-                        else if key.starts_with(b"provide_") {(8, false)}
-                        else {
-                            log::error!("Unexpected line: {}",
-                                str_from_slice_u8!(line));
-                            return Err(Error::BrokenPKGBUILDs(Vec::new()))
-                        };
-                        let name = &key[offset..];
-                        let mut pkg = None;
-                        for pkg_cmp in
-                            pkgbuild.pkgs.iter_mut()
-                        {
-                            if pkg_cmp.pkgname == name {
-                                pkg = Some(pkg_cmp);
-                                break
+                        log::error!("Line '{}' encountered when expecting \
+                            [PKGBUILD]", str_from_slice_u8!(line));
+                        return Err(Error::ParserScriptIllegalOutput(line.into()))
+                    }
+                },
+                ParsingState::Pkgbuild(mut pkgbuild) => {
+                match line {
+                    b"PACKAGE" => state = 
+                        ParsingState::Package(pkgbuild, Default::default()),
+                    b"ARCH" => state = ParsingState::PkgbuildArchSpecific(
+                                        pkgbuild, Default::default()),
+                    b"END" => {
+                        pkgbuilds.push(pkgbuild);
+                        state = ParsingState::None
+                    },
+                    _ => {
+                        key_value_from_slice_u8!(line, key, value);
+                        match key {
+                            b"pkgbase" => pkgbuild.pkgbase = value,
+                            b"pkgver" => pkgbuild.pkgver = value,
+                            b"pkgrel" => pkgbuild.pkgrel = value,
+                            b"epoch" => pkgbuild.epoch = value,
+                            b"pkgdesc" => pkgbuild.pkgdesc = value,
+                            b"url" => pkgbuild.url = value,
+                            b"license" => pkgbuild.license.push(value),
+                            b"install" => pkgbuild.install = value,
+                            b"changelog" => pkgbuild.changelog = value,
+                            b"validgpgkeys" => 
+                                pkgbuild.validgpgkeys.push(value),
+                            b"noextract" => pkgbuild.noextract.push(value),
+                            b"groups" => pkgbuild.groups.push(value),
+                            b"backup" => pkgbuild.backups.push(value),
+                            b"options" => pkgbuild.options.push(value),
+                            b"pkgver_func" => match value {
+                                b"y" => pkgbuild.pkgver_func = true,
+                                b"n" => pkgbuild.pkgver_func = false,
+                                _ => {
+                                    log::error!("Invalid pkgver_func value: {}", 
+                                       str_from_slice_u8!(line));
+                                    return Err(Error::ParserScriptIllegalOutput(
+                                        line.into()))
+                                }
+                            }
+                            _ => {
+                                log::error!("Line '{}' does not contain valid \
+                                   key or keyword when expecting pkgbuild info", 
+                                   str_from_slice_u8!(line));
+                                return Err(Error::ParserScriptIllegalOutput(
+                                    line.into()))
                             }
                         }
-                        let pkg = match pkg {
-                            Some(pkg) => pkg,
-                            None => {
-                                log::error!("Failed to find pkg {}",
-                                    str_from_slice_u8!(name));
-                                return Err(Error::BrokenPKGBUILDs(Vec::new()))
-                            },
-                        };
-                        if is_dep {
-                            pkg.depends.push(value)
-                        } else {
-                            pkg.provides.push(value)
-                        }
+                        state = ParsingState::Pkgbuild(pkgbuild)
                     }
                 }
-            } else if line == b"[PKGBUILD]" {
-                if started {
-                    pkgbuilds.push(pkgbuild);
-                    pkgbuild = PkgbuildParsing::default();
-                } else {
-                    started = true;
-                }
-            } else {
-                log::error!("Illegal line: {}", str_from_slice_u8!(line));
-                return Err(Error::BrokenPKGBUILDs(Vec::new()))
+                },
+                ParsingState::Package(
+                    mut pkgbuild, 
+                    mut package
+                ) => 
+                match line {
+                    b"PACKAGEARCH" => state = ParsingState::PackageArchSpecific(
+                        pkgbuild, package, Default::default()),
+                    b"END" => {
+                        pkgbuild.pkgs.push(package);
+                        state = ParsingState::Pkgbuild(pkgbuild)
+                    },
+                    _ => {
+                        key_value_from_slice_u8!(line, key, value);
+                        match key {
+                            b"pkgname" => package.pkgname = value,
+                            b"pkgdesc" => package.pkgdesc = value,
+                            b"url" => package.url = value,
+                            b"license" => package.license.push(value),
+                            b"groups" => package.groups.push(value),
+                            b"backup" => package.backup.push(value),
+                            b"options" => package.options.push(value),
+                            b"install" => package.install = value,
+                            b"changelog" => package.changelog = value,
+                            _ => {
+                                log::error!("Line '{}' does not contain valid \
+                                   key or keyword when expecting pkgbuild info", 
+                                   str_from_slice_u8!(line));
+                                return Err(Error::ParserScriptIllegalOutput(
+                                    line.into()))
+                            }
+                        }
+                        state = ParsingState::Package(pkgbuild, package)
+                    }
+                },
+                ParsingState::PackageArchSpecific(
+                    pkgbuild, 
+                    mut package, 
+                    mut arch
+                ) => 
+                match line {
+                    b"END" => {
+                        package.arches.push(arch);
+                        state = ParsingState::Package(pkgbuild, package)
+                    },
+                    _ => {
+                        key_value_from_slice_u8!(line, key, value);
+                        match key {
+                            b"arch" => arch.arch = value,
+                            b"checkdepends" => arch.checkdepends.push(value),
+                            b"depends" => arch.depends.push(value),
+                            b"optdepends" => arch.optdepends.push(value),
+                            b"provides" => arch.provides.push(value),
+                            b"conflicts" => arch.conflicts.push(value),
+                            b"replaces" => arch.replaces.push(value),
+                            _ => {
+                                log::error!("Line '{}' does not contain valid \
+                                   key or keyword when expecting package arch \
+                                   info", str_from_slice_u8!(line));
+                                return Err(Error::ParserScriptIllegalOutput(
+                                    line.into()))
+                            }
+                        }
+                        state = ParsingState::PackageArchSpecific(
+                            pkgbuild, package, arch)
+                    }
+                },
+                ParsingState::PkgbuildArchSpecific(
+                    mut pkgbuild,
+                    mut arch
+                ) =>
+                match line {
+                    b"END" => {
+                        pkgbuild.arches.push(arch);
+                        state = ParsingState::Pkgbuild(pkgbuild)
+                    },
+                    _ => {
+                        key_value_from_slice_u8!(line, key, value);
+                        match key {
+                            b"arch" => arch.arch = value,
+                            b"source" => arch.sources.push(value),
+                            b"cksums" => arch.cksums.push(value),
+                            b"md5sums" => arch.md5sums.push(value),
+                            b"sha1sums" => arch.sha1sums.push(value),
+                            b"sha224sums" => arch.sha224sums.push(value),
+                            b"sha256sums" => arch.sha256sums.push(value),
+                            b"sha384sums" => arch.sha384sums.push(value),
+                            b"sha512sums" => arch.sha512sums.push(value),
+                            b"b2sums" => arch.b2sums.push(value),
+                            b"depends" => arch.depends.push(value),
+                            b"makedepends" => arch.makedepends.push(value),
+                            b"checkdepends" => arch.checkdepends.push(value),
+                            b"optdepends" => arch.optdepends.push(value),
+                            b"conflicts" => arch.conflicts.push(value),
+                            b"provides" => arch.provides.push(value),
+                            b"replaces" => arch.replaces.push(value),
+                            _ => {
+                                log::error!("Line '{}' does not contain valid \
+                                   key or keyword when expecting pkgbuild arch \
+                                   info", str_from_slice_u8!(line));
+                                return Err(Error::ParserScriptIllegalOutput(
+                                    line.into()))
+                            }
+                        }
+                        state = ParsingState::PkgbuildArchSpecific(
+                            pkgbuild, arch)
+                    }
+                },
             }
         }
-        if started {
-            pkgbuilds.push(pkgbuild)
+        match state {
+            ParsingState::None => (),
+            ParsingState::Pkgbuild(pkgbuild) => 
+                pkgbuilds.push(pkgbuild),
+            _ => {
+                log::error!("Unexpected state before finishing PKGBUILDs: {:?}",
+                    state);
+                return Err(Error::ParserScriptIllegalOutput(Default::default()))
+            },
         }
         Ok(Self {
             entries: pkgbuilds,
@@ -1843,12 +1846,61 @@ impl From<&[u8]> for Dependency {
     }
 }
 
+pub type MakeDependency = Dependency;
+pub type CheckDependency = Dependency;
+
+#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct OptionalDependency {
+    pub dep: Dependency,
+    pub reason: String,
+}
+
+impl From<&str> for OptionalDependency {
+    fn from(value: &str) -> Self {
+        if let Some((dep, reason)) = 
+            value.split_once(": ") 
+        {
+            Self {
+                dep: dep.into(),
+                reason: reason.into(),
+            }
+        } else {
+            Self {
+                dep: value.into(),
+                reason: Default::default(),
+            }
+        }
+    }
+}
+
+impl From<&[u8]> for OptionalDependency {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
+    }
+}
+
+#[cfg(feature = "format")]
+impl Display for OptionalDependency {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.dep)?;
+        if ! self.reason.is_empty() {
+            write!(f, ": {}", self.reason)?;
+        }
+        Ok(())
+    }
+}
+
+pub type Conflict = Dependency;
+
 #[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Provide {
     pub name: String,
     pub version: Option<PlainVersion>
 }
+
+pub type Replace = Dependency;
 
 #[cfg(feature = "format")]
 impl Display for Provide {
@@ -1890,20 +1942,82 @@ impl TryFrom<&[u8]> for Provide {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PackageArchSpecific {
+    pub checkdepends: Vec<CheckDependency>,
+    /// The dependencies of the split package
+    pub depends: Vec<Dependency>,
+    pub optdepends: Vec<OptionalDependency>,
+    /// What virtual packages does this package provide
+    pub provides: Vec<Provide>,
+    pub conflicts: Vec<Conflict>,
+    pub replaces: Vec<Replace>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MultiArch<T> {
+    pub any: T,
+    pub arches: BTreeMap<Architecture, T>,
+}
+
+pub fn multiarch_have_same_arches<T1, T2>(
+    some: &MultiArch<T1>, other: &MultiArch<T2>
+) -> bool 
+{
+    let this = &some.arches;
+    let that = &other.arches;
+    if this.is_empty() {
+        that.is_empty()
+    } else if that.is_empty() {
+        false
+    } else {
+        let mut arches_this: Vec<&Architecture> = this.keys().collect();
+        let mut arches_that: Vec<&Architecture> = that.keys().collect();
+        arches_this.sort_unstable();
+        arches_that.sort_unstable();
+        arches_this == arches_that
+    }
+}
+
 /// A sub-package parsed from a split-package `PKGBUILD`
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Package {
     /// The name of the split pacakge
     pub pkgname: String,
-    /// The dependencies of the split package
-    pub depends: Vec<Dependency>,
-    /// What virtual packages does this package provide
-    pub provides: Vec<Provide>,
+    pub pkgdesc: String,
+    pub url: String,
+    pub license: Vec<String>,
+    pub groups: Vec<String>,
+    pub backup: Vec<String>,
+    pub options: Options,
+    pub install: String,
+    pub changelog: String,
+    pub multiarch: MultiArch<PackageArchSpecific>,
+}
+
+macro_rules! pkg_iter_all_arch {
+    ($pkg:ident, $var:ident, $type: ident) => {
+        pub fn $var(&self) -> impl Iterator<Item = &$type> {
+            let iter_any = self.multiarch.any.$var.iter();
+            let iter_arches = self.multiarch.arches.iter()
+                .map(|(_, pkg_arch)|pkg_arch.$var.iter()).flatten();
+            iter_any.chain(iter_arches)
+        }
+    }
+}
+
+impl Package {
+    pkg_iter_all_arch!(self, depends, Dependency);
+    pkg_iter_all_arch!(self, optdepends, OptionalDependency);
+    pkg_iter_all_arch!(self, provides, Provide);
+    pkg_iter_all_arch!(self, conflicts, Conflict);
+    pkg_iter_all_arch!(self, replaces, Replace);
 }
 
 #[cfg(feature = "format")]
-fn format_write_array<I, D>(f: &mut Formatter<'_>, array: I) 
+fn format_write_iter<I, D>(f: &mut Formatter<'_>, array: I) 
 -> std::fmt::Result 
 where
     I: IntoIterator<Item = D>,
@@ -1925,9 +2039,9 @@ where
 impl Display for Package {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{name: {}, depends: [", self.pkgname)?;
-        format_write_array(f, &self.depends)?;
+        format_write_iter(f, self.depends())?;
         write!(f, "], provides: [")?;
-        format_write_array(f, &self.provides)?;
+        format_write_iter(f, self.provides())?;
         write!(f, "]}}")
     }
 }
@@ -2277,6 +2391,7 @@ impl Display for SourceProtocol {
     }
 }
 
+#[cfg(feature = "format")]
 impl SourceProtocol {
     fn get_proto_str(&self) -> &'static str {
         match self {
@@ -2431,6 +2546,7 @@ impl Source {
         name
     }
 
+    #[cfg(feature = "format")]
     /// Convert to the format `PKGBUILD` uses in the `source` array
     pub fn get_pkgbuild_source(&self) -> String {
         let mut raw = String::new();
@@ -2444,7 +2560,7 @@ impl Source {
             None => "",
         };
         let proto_actual = self.protocol.get_proto_str();
-        match self.protocol {
+        match &self.protocol {
             SourceProtocol::Unknown | SourceProtocol::Local => (),
             _ =>
                 if proto_actual != proto_url {
@@ -2453,6 +2569,30 @@ impl Source {
                 }
         }
         raw.push_str(&self.url);
+        macro_rules! push_fragment {
+            ($fragment: ident) => {
+                if let Some(fragment) = $fragment {
+                    raw.push_str(&format!("#{}", fragment))
+                }
+            };
+        }
+        match &self.protocol {
+            SourceProtocol::Bzr { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Fossil { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Git { fragment, signed } => {
+                push_fragment!(fragment);
+                if *signed {
+                    raw.push_str("?signed")
+                }
+            },
+            SourceProtocol::Hg { fragment } => 
+                push_fragment!(fragment),
+            SourceProtocol::Svn { fragment } => 
+                push_fragment!(fragment),
+            _ => (),
+        };
         raw
     }
 }
@@ -2466,10 +2606,9 @@ pub type Sha384sum = [u8; 48];
 pub type Sha512sum = [u8; 64];
 pub type B2sum = [u8; 64];
 
-/// A source with its integrity checksum. Do note that each source could have
-/// multiple integrity checksums defined. For efficiency this is not directly
-/// returned in the `Pkgbuild`. 
-pub struct SourceWithInteg {
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SourceWithChecksum {
     pub source: Source,
     pub cksum: Option<Cksum>,
     pub md5sum: Option<Md5sum>,
@@ -2478,24 +2617,351 @@ pub struct SourceWithInteg {
     pub sha256sum: Option<Sha256sum>,
     pub sha384sum: Option<Sha384sum>,
     pub sha512sum: Option<Sha512sum>,
-    pub b2sum: Option<B2sum>
+    pub b2sum: Option<B2sum>,
 }
 
-impl From<&Source> for SourceWithInteg {
-    fn from(value: &Source) -> Self {
-        Self {
-            source: value.clone(),
-            cksum: None,
-            md5sum: None,
-            sha1sum: None,
-            sha224sum: None,
-            sha256sum: None,
-            sha384sum: None,
-            sha512sum: None,
-            b2sum: None,
+#[cfg(feature = "format")]
+fn write_byte_iter<I>(f: &mut Formatter<'_>, bytes: I) -> std::fmt::Result 
+where
+    I: IntoIterator<Item = u8>
+{
+    for byte in bytes.into_iter() {
+        write!(f, "{:02x}", byte)?
+    }
+    Ok(())
+}
+
+#[cfg(feature = "format")]
+impl Display for SourceWithChecksum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{source: {}", self.source)?;
+        if let Some(cksum) = self.cksum {
+            write!(f, ", cksum: {}", cksum)?
+        }
+        macro_rules! write_cksum {
+            ($($cksum: ident), +) => {
+                $(
+                    if let Some($cksum) = self.$cksum {
+                        write!(f, ", {}: ", stringify!($cksum))?;
+                        write_byte_iter(f, $cksum)?
+                    }
+                )+
+            };
+        }
+        write_cksum!(md5sum, sha1sum, sha224sum, sha256sum, 
+            sha384sum, sha512sum, b2sum);
+        write!(f, "}}")
+    }
+}
+
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// pub enum PkgbuildOptionKey {
+//     #[default]
+//     Strip,
+//     Docs,
+//     LibTool,
+//     StaticLibs,
+//     EmptyDirs,
+//     ZipMan,
+//     CCache,
+//     DistCC,
+//     BuildFlags,
+//     MakeFlags,
+//     Debug,
+//     Lto,
+// }
+
+// impl<'a> TryFrom<&'a [u8]> for PkgbuildOptionKey {
+//     type Error = Error;
+
+//     fn try_from(value: &'a [u8]) -> Result<Self> {
+//         Ok(match value {
+//             b"strip" => Self::Strip,
+//             b"docs" => Self::Docs,
+//             b"libtool" => Self::LibTool,
+//             b"staticlibs" => Self::StaticLibs,
+//             b"emptydirs" => Self::EmptyDirs,
+//             b"zipman" => Self::ZipMan,
+//             b"ccache" => Self::CCache,
+//             b"distcc" => Self::DistCC,
+//             b"buildflags" => Self::BuildFlags,
+//             b"makeflags" => Self::MakeFlags,
+//             b"debug" => Self::Debug,
+//             b"lto" => Self::Lto,
+//             _ => {
+//                 log::error!("Unknown option '{}'", str_from_slice_u8!(value));
+//                 return Err(Error::BrokenPKGBUILDs(Default::default()))
+//             }
+//         })
+//     }
+// }
+
+// impl AsRef<str> for PkgbuildOptionKey {
+//     fn as_ref(&self) -> &str {
+//         match self {
+//             PkgbuildOptionKey::Strip => "strip",
+//             PkgbuildOptionKey::Docs => "docs",
+//             PkgbuildOptionKey::LibTool => "libtool",
+//             PkgbuildOptionKey::StaticLibs => "staticlibs",
+//             PkgbuildOptionKey::EmptyDirs => "emptydirs",
+//             PkgbuildOptionKey::ZipMan => "zipman",
+//             PkgbuildOptionKey::CCache => "ccache",
+//             PkgbuildOptionKey::DistCC => "distcc",
+//             PkgbuildOptionKey::BuildFlags => "buildflags",
+//             PkgbuildOptionKey::MakeFlags => "makeflags",
+//             PkgbuildOptionKey::Debug => "debug",
+//             PkgbuildOptionKey::Lto => "lto",
+//         }
+//     }
+// }
+
+// impl Display for PkgbuildOptionKey {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.as_ref())
+//     }
+// }
+
+
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// pub struct PkgbuildOption {
+//     pub key: PkgbuildOptionKey,
+//     pub value: bool
+// }
+
+// impl Display for PkgbuildOption {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         if ! self.value {
+//             write!(f, "!")?;
+//         }
+//         write!(f, "{}", self.key.as_ref())
+//     }
+// }
+
+// #[derive(Debug, Default, Clone)]
+// #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// /// This is not clean, but we use this to respect the original order
+// pub struct PkgbuildOptions {
+//     options: Vec<PkgbuildOption>
+// }
+
+// impl<'a> From<&Vec<&'a [u8]>> for PkgbuildOptions {
+//     fn from(value: &Vec<&'a [u8]>) -> Self {
+//         let mut options = Self::default();
+//         for item in value.iter() {
+//             if item.is_empty() { 
+//                 continue 
+//             }
+//             let mut item = *item;
+//             let enable = item[0] != b'!';
+//             if ! enable { 
+//                 item = &item[1..]; 
+//                 if item.is_empty() {
+//                     continue 
+//                 }
+//             }
+//             if let Ok(key) = item.try_into() {
+//                 options.options.push(PkgbuildOption { key, value: enable })
+//             }
+//         }
+//         options
+//     }
+// }
+
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Options {
+    pub strip: Option<bool>,
+    pub docs: Option<bool>,
+    pub libtool: Option<bool>,
+    pub staticlibs: Option<bool>,
+    pub emptydirs: Option<bool>,
+    pub zipman: Option<bool>,
+    pub ccache: Option<bool>,
+    pub distcc: Option<bool>,
+    pub buildflags: Option<bool>,
+    pub makeflags: Option<bool>,
+    pub debug: Option<bool>,
+    pub lto: Option<bool>,
+}
+
+// impl From<&PkgbuildOptions> for Options {
+//     fn from(value: &PkgbuildOptions) -> Self {
+//         let mut options = Self::default();
+//         for option in value.options.iter() {
+//             let value = Some(option.value);
+//             match option.key {
+//                 PkgbuildOptionKey::Strip => options.strip = value,
+//                 PkgbuildOptionKey::Docs => options.docs = value,
+//                 PkgbuildOptionKey::LibTool => options.libtool = value,
+//                 PkgbuildOptionKey::StaticLibs => options.staticlibs = value,
+//                 PkgbuildOptionKey::EmptyDirs => options.emptydirs = value,
+//                 PkgbuildOptionKey::ZipMan => options.zipman = value,
+//                 PkgbuildOptionKey::CCache => options.ccache = value,
+//                 PkgbuildOptionKey::DistCC => options.distcc = value,
+//                 PkgbuildOptionKey::BuildFlags => options.buildflags = value,
+//                 PkgbuildOptionKey::MakeFlags => options.makeflags = value,
+//                 PkgbuildOptionKey::Debug => options.debug = value,
+//                 PkgbuildOptionKey::Lto => options.lto = value,
+//             }
+//         }
+//         options
+//     }
+// }
+
+impl<'a> From<&Vec<&'a [u8]>> for Options {
+    fn from(value: &Vec<&'a [u8]>) -> Self {
+        let mut options = Self::default();
+        for item in value.iter() {
+            if item.is_empty() { 
+                continue 
+            }
+            let mut item = *item;
+            let enable = item[0] != b'!';
+            if ! enable { 
+                item = &item[1..]; 
+                if item.is_empty() {
+                    continue 
+                }
+            }
+            match item {
+                b"strip" => options.strip = Some(enable),
+                b"docs" => options.docs = Some(enable),
+                b"libtool" => options.libtool = Some(enable),
+                b"staticlibs" => options.staticlibs = Some(enable),
+                b"emptydirs" => options.emptydirs = Some(enable),
+                b"zipman" => options.zipman = Some(enable),
+                b"ccache" => options.ccache = Some(enable),
+                b"distcc" => options.distcc = Some(enable),
+                b"buildflags" => options.buildflags = Some(enable),
+                b"makeflags" => options.makeflags = Some(enable),
+                b"debug" => options.debug = Some(enable),
+                b"lto" => options.lto = Some(enable),
+                _ => log::warn!("Unknown option {}", str_from_slice_u8!(item)),
+            }
+        }
+        options
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Architecture {
+    #[default]
+    // Arch Linux specific
+    X86_64,
+    // Arch Linux ARM specific
+    Aarch64,
+    Armv7h,
+    // Arch Linux RSIC-V specific
+    Riscv64,
+    Other(String)
+}
+
+impl From<&[u8]> for Architecture {
+    fn from(value: &[u8]) -> Self {
+        Self::from(str_from_slice_u8!(value))
+    }
+}
+
+impl From<&str> for Architecture {
+    fn from(value: &str) -> Self {
+        let arch = value.to_lowercase();
+        match arch.as_str() {
+            // "any" => Self::Any,
+            "x86_64" => Self::X86_64,
+            "aarch64" => Self::Aarch64,
+            "armv7h" => Self::Armv7h,
+            "riscv64" => Self::Riscv64,
+            _ => Self::Other(arch)
         }
     }
 }
+
+impl AsRef<str> for Architecture {
+    fn as_ref(&self) -> &str {
+        match self {
+            // Architecture::Any => "any",
+            Architecture::X86_64 => "x86_64",
+            Architecture::Aarch64 => "aarch64",
+            Architecture::Armv7h => "armv7h",
+            Architecture::Riscv64 => "riscv64",
+            Architecture::Other(arch) => &arch,
+        }
+    }
+}
+
+impl Display for Architecture {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
+
+/// A `PKGBUILD`'s arch-specific variables
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PkgbuildArchSpecific {
+    pub sources_with_checksums: Vec<SourceWithChecksum>,
+    pub depends: Vec<Dependency>,
+    pub makedepends: Vec<MakeDependency>,
+    pub checkdepends: Vec<CheckDependency>,
+    pub optdepends: Vec<OptionalDependency>,
+    pub conflicts: Vec<Conflict>,
+    pub provides: Vec<Provide>,
+    pub replaces: Vec<Replace>,
+}
+
+// #[derive(Default)]
+// pub struct SourcesAndChecksums<'a> {
+//     sources: Vec<&'a Source>,
+//     cksums: Vec<Option<Cksum>>,
+//     md5sums: Vec<&'a Option<Md5sum>>,
+//     sha1sums: Vec<&'a Option<Sha1sum>>,
+//     sha224sums: Vec<&'a Option<Sha224sum>>,
+//     sha256sums: Vec<&'a Option<Sha256sum>>,
+//     sha384sums: Vec<&'a Option<Sha384sum>>,
+//     sha512sums: Vec<&'a Option<Sha512sum>>,
+//     b2sums: Vec<&'a Option<B2sum>>,
+// }
+
+// impl<'a> From<&'a PkgbuildArchSpecific> for SourcesAndChecksums<'a> {
+//     fn from(value: &'a PkgbuildArchSpecific) -> Self {
+//         let mut sources_and_checksums = Self::default();
+//         let mut cksums = false;
+//         let mut md5sums = false;
+
+//         for source_with_checksum in value.sources_with_checksums.iter() {
+//             sources_and_checksums.sources.push(&source_with_checksum.source);
+//             if let Some(cksum) = source_with_checksum.cksum {
+//                 sources_and_checksums.cksums.push(cksum)
+//             }
+//             macro_rules! push_and_check {
+//                 ($checksum: ident, $checksums: ident) => {
+
+//                     if let Some($checksum) = &source_with_checksum.$checksum {
+//                         sources_and_checksums.$checksums.push($checksum)
+//                     }
+//                 };
+//             }
+//             push_if_some!(md5sum, md5sums);
+//             push_if_some!(sha1sum, sha1sums);
+//             push_if_some!(sha224sum, sha224sums);
+//             push_if_some!(sha256sum, sha256sums);
+//             push_if_some!(sha384sum, sha384sums);
+//             push_if_some!(sha512sum, sha512sums);
+//             push_if_some!(b2sum, b2sums);
+//         }
+//         sources_and_checksums
+//     }
+// }
+
+// impl PkgbuildArchSpecific {
+//     pub fn sources_and_checksums(&self) -> SourcesAndChecksums {
+//         self.into()
+//     }
+// }
 
 /// A `PKGBUILD` that could potentially have multiple split-packages
 #[derive(Debug, Default, Clone)]
@@ -2504,109 +2970,37 @@ pub struct Pkgbuild {
     pub pkgbase: String,
     pub pkgs: Vec<Package>,
     pub version: PlainVersion,
-    pub depends: Vec<Dependency>,
-    pub makedepends: Vec<Dependency>,
-    pub provides: Vec<Provide>,
-    pub sources: Vec<Source>,
-    pub cksums: Vec<Option<Cksum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub md5sums: Vec<Option<Md5sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha1sums: Vec<Option<Sha1sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha224sums: Vec<Option<Sha224sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha256sums: Vec<Option<Sha256sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha384sums: Vec<Option<Sha384sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub sha512sums: Vec<Option<Sha512sum>>,
-    #[cfg_attr(feature = "serde", serde(with = "serde_optional_bytes_arrays"))]
-    pub b2sums: Vec<Option<B2sum>>,
+    pub pkgdesc: String,
+    pub url: String,
+    pub license: Vec<String>,
+    pub install: String,
+    pub changelog: String,
+    pub validpgpkeys: Vec<String>,
+    pub noextract: Vec<String>,
+    pub groups: Vec<String>,
+    pub multiarch: MultiArch<PkgbuildArchSpecific>,
+    pub backup: Vec<String>,
+    pub options: Options,
     pub pkgver_func: bool,
-}
-
-#[cfg(feature = "format")]
-fn format_write_cksum_array<'a, I>(f: &mut Formatter<'_>, array: I) 
--> std::fmt::Result 
-where
-    I: IntoIterator<Item = &'a Option<Cksum>>
-{
-    let mut start = false;
-    for item in array.into_iter() {
-        if start {
-            write!(f, ", ")?
-        } else {
-            start = true
-        }
-        if let Some(cksum) = item {
-            write!(f, "{:08x}", cksum)?
-        } else {
-            write!(f, "SKIP")?
-        }
-    }
-    Ok(())
-}
-
-#[cfg(feature = "format")]
-fn format_write_integ_sums_array<'a, I, S>(f: &mut Formatter<'_>, array: I) 
--> std::fmt::Result 
-where
-    I: IntoIterator<Item = &'a Option<S>>,
-    S: AsRef<[u8]> + 'a
-{
-
-    let mut start = false;
-    for item in array.into_iter() {
-        if start {
-            write!(f, ", ")?
-        } else {
-            start = true
-        }
-        if let Some(cksum) = item {
-            for byte in cksum.as_ref().iter() {
-                write!(f, "{:02x}", byte)?
-            }
-        } else {
-            write!(f, "SKIP")?
-        }
-    }
-    Ok(())
 }
 
 #[cfg(feature = "format")]
 impl Display for Pkgbuild {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{base: {}, pkgs: [", self.pkgbase)?;
-        format_write_array(f, &self.pkgs)?;
+        format_write_iter(f, &self.pkgs)?;
         write!(f, "], version: {}", self.version)?;
         if self.pkgver_func {
             write!(f, " (has pkgver func)")?;
         }
         write!(f, ", depends: [")?;
-        format_write_array(f, &self.depends)?;
+        format_write_iter(f, self.depends())?;
         write!(f, "], makedepends: [")?;
-        format_write_array(f, &self.makedepends)?;
+        format_write_iter(f, self.makedepends())?;
         write!(f, "], provides: [")?;
-        format_write_array(f, &self.provides)?;
-        write!(f, "], sources: [")?;
-        format_write_array(f, &self.sources)?;
-        write!(f, "], cksums: [")?;
-        format_write_cksum_array(f, &self.cksums)?;
-        write!(f, "], md5sums: [")?;
-        format_write_integ_sums_array(f, &self.md5sums)?;
-        write!(f, "], sha1sums: [")?;
-        format_write_integ_sums_array(f, &self.sha1sums)?;
-        write!(f, "], sha224sums: [")?;
-        format_write_integ_sums_array(f, &self.sha224sums)?;
-        write!(f, "], sha256sums: [")?;
-        format_write_integ_sums_array(f, &self.sha256sums)?;
-        write!(f, "], sha384sums: [")?;
-        format_write_integ_sums_array(f, &self.sha384sums)?;
-        write!(f, "], sha512sums: [")?;
-        format_write_integ_sums_array(f, &self.sha512sums)?;
-        write!(f, "], b2sums: [")?;
-        format_write_integ_sums_array(f, &self.b2sums)?;
+        format_write_iter(f, self.provides())?;
+        write!(f, "], sources_with_checksums: [")?;
+        format_write_iter(f, self.sources_with_checksums())?;
         write!(f, "]}}")
     }
 }
@@ -2627,52 +3021,165 @@ impl Display for Pkgbuilds {
     }
 }
 
+fn vec_items_from_vec_items<'a, I1, I2>(items: &'a Vec<&'a I2>) -> Vec<I1>
+where
+    I1: From<&'a I2>,
+    I2: ?Sized
+{
+    items.iter().map(|item|I1::from(*item)).collect()
+}
+
+fn vec_items_try_from_vec_items<'a, I1, I2>(items: &'a Vec<&'a I2>) 
+-> Result<Vec<I1>>
+where
+    I1: TryFrom<&'a I2>, Error: From<<I1 as TryFrom<&'a I2>>::Error>,
+    I2: ?Sized
+{
+    let mut converted = Vec::new();
+    for item in items.iter() {
+        converted.push(I1::try_from(*item)?)
+    }
+    Ok(converted)
+}
+
+impl TryFrom<&PackageArchitectureParsing<'_>> for PackageArchSpecific {
+    type Error = Error;
+
+    fn try_from(value: &PackageArchitectureParsing<'_>) -> Result<Self> {
+        let provides = 
+            vec_items_try_from_vec_items(&value.provides)?;
+        Ok(Self {
+            checkdepends: vec_items_from_vec_items(&value.checkdepends),
+            depends: vec_items_from_vec_items(&value.depends),
+            optdepends: vec_items_from_vec_items(&value.optdepends),
+            provides,
+            conflicts: vec_items_from_vec_items(&value.conflicts),
+            replaces: vec_items_from_vec_items(&value.replaces),
+        })
+    }   
+}
+
+fn vec_string_from_vec_slice_u8<'a>(vec: &Vec<&'a [u8]>) -> Vec<String> {
+    vec.iter().map(|item|string_from_slice_u8!(*item)).collect()
+}
+
 impl TryFrom<&PackageParsing<'_>> for Package {
     type Error = Error;
 
     fn try_from(value: &PackageParsing) -> Result<Self> {
-        let depends = value.depends.iter().map(
-            |depend|(*depend).into()).collect();
-        let mut provides = Vec::new();
-        for provide in value.provides.iter() {
-            provides.push(str_from_slice_u8!(provide).try_into()?)
+        let mut multiarch 
+            = MultiArch::default();
+        for arch in value.arches.iter() {
+            let arch_value = 
+                PackageArchSpecific::try_from(arch)?;
+            if arch.arch == b"any" {
+                multiarch.any = arch_value;
+                continue
+            }
+            if let Some(_) = multiarch.arches.insert(
+                Architecture::from(arch.arch), arch_value) 
+            {
+                log::error!("Duplicated architecture {}", 
+                    str_from_slice_u8!(arch.arch));
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
         }
-        let pkgname = string_from_slice_u8!(value.pkgname);
-        Ok(Self { pkgname, depends, provides })
+        Ok(Self { 
+            pkgname: string_from_slice_u8!(value.pkgname),
+            pkgdesc: string_from_slice_u8!(value.pkgdesc), 
+            url: string_from_slice_u8!(value.url),
+            license: vec_string_from_vec_slice_u8(&value.license),
+            groups: vec_string_from_vec_slice_u8(&value.groups),
+            backup: vec_string_from_vec_slice_u8(&value.backup),
+            options: (&value.options).into(),
+            install: string_from_slice_u8!(value.install),
+            changelog: string_from_slice_u8!(value.changelog),
+            multiarch
+         })
     }
 }
 
-fn cksum_from_raw(raw: &&[u8]) -> Option<u32> {
-    if raw == b"SKIP" {
-        return None
+
+
+impl TryFrom<&PkgbuildArchitectureParsing<'_>> for PkgbuildArchSpecific {
+    type Error = Error;
+
+    fn try_from(value: &PkgbuildArchitectureParsing) -> Result<Self> {
+        let mut sources_with_checksums = Vec::new();
+        if ! value.sources.is_empty() {
+            let len = value.sources.len();
+            macro_rules! len_mismatch {
+                ($value:ident, $sums:ident, $len:ident) => {
+                    ! $value.$sums.is_empty() && $value.$sums.len() != $len
+                };
+            }
+            if len_mismatch!(value, cksums, len) ||
+                len_mismatch!(value, md5sums, len) ||
+                len_mismatch!(value, sha1sums, len) ||
+                len_mismatch!(value, sha224sums, len) ||
+                len_mismatch!(value, sha256sums, len) ||
+                len_mismatch!(value, sha384sums, len) ||
+                len_mismatch!(value, sha512sums, len) ||
+                len_mismatch!(value, b2sums, len)
+            {
+                log::error!("Lengths of sources and checksums mismatch, \
+                    sources: {}, cksums: {}, md5sums: {}, sha1sums: {} \
+                    sha224sums: {}, sha256sums: {}, sha384sums: {} \
+                    sha512sums: {}, b2sums: {}",
+                    value.sources.len(), value.cksums.len(), value.md5sums.len(),
+                    value.sha1sums.len(), value.sha224sums.len(), 
+                    value.sha256sums.len(), value.sha384sums.len(),
+                    value.sha512sums.len(), value.b2sums.len());
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
+            for (id, source) in value.sources.iter().enumerate(){
+                let mut source_with_checksum = 
+                    SourceWithChecksum::default();
+                source_with_checksum.source = (*source).into();
+                if let Some(cksum) = value.cksums.get(id) {
+                    source_with_checksum.cksum = if cksum == b"SKIP" {
+                        None
+                    } else {
+                        String::from_utf8_lossy(cksum).parse().ok()
+                    }
+                }
+                macro_rules! hash_sum_from_hex {
+                    ($sum:ident, $sums:ident) => {
+                        if let Some($sum) = value.$sums.get(id) {
+                            source_with_checksum.$sum = if $sum == b"SKIP" {
+                                None
+                            } else {
+                                FromHex::from_hex($sum).ok()
+                            }
+                        }                        
+                    };
+                }
+                hash_sum_from_hex!(md5sum, md5sums);
+                hash_sum_from_hex!(sha1sum, sha1sums);
+                hash_sum_from_hex!(sha224sum, sha224sums);
+                hash_sum_from_hex!(sha256sum, sha256sums);
+                hash_sum_from_hex!(sha384sum, sha384sums);
+                hash_sum_from_hex!(sha512sum, sha512sums);
+                hash_sum_from_hex!(b2sum, b2sums);
+                sources_with_checksums.push(source_with_checksum)
+            }
+        }
+        let provides = 
+            vec_items_try_from_vec_items(&value.provides)?;
+        Ok (Self {
+            sources_with_checksums,
+            depends: vec_items_from_vec_items(&value.depends),
+            makedepends: vec_items_from_vec_items(&value.makedepends),
+            checkdepends: vec_items_from_vec_items(&value.checkdepends),
+            optdepends: vec_items_from_vec_items(&value.optdepends),
+            conflicts: vec_items_from_vec_items(&value.conflicts),
+            provides,
+            replaces: vec_items_from_vec_items(&value.replaces),
+        })
     }
-    #[cfg(feature = "unsafe_str")]
-    return unsafe{std::str::from_utf8_unchecked(raw)}.parse().ok();
-    #[cfg(not(feature = "unsafe_str"))]
-    String::from_utf8_lossy(raw).parse().ok()
 }
 
-fn cksums_from_raws<'a, I>(raws: I) -> Vec<Option<u32>> 
-where
-    I: IntoIterator<Item = &'a &'a [u8]>
-{
-    raws.into_iter().map(|raw|cksum_from_raw(raw)).collect()
-}
 
-fn hash_sum_from_hex<C: FromHex>(hex: &&[u8]) -> Option<C> {
-    if hex == b"SKIP" {
-        return None
-    }
-    FromHex::from_hex(hex).ok()
-}
-
-fn hash_sums_from_hexes<'a, I, C>(hexes: I) -> Vec<Option<C>> 
-where
-    I: IntoIterator<Item = &'a &'a [u8]>,
-    C: FromHex
-{
-    hexes.into_iter().map(|hex|hash_sum_from_hex(hex)).collect()
-}
 
 impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
     type Error = Error;
@@ -2682,31 +3189,39 @@ impl TryFrom<&PkgbuildParsing<'_>> for Pkgbuild {
         for pkg in value.pkgs.iter() {
             pkgs.push(pkg.try_into()?)
         }
-        let mut provides = Vec::new();
-        for provide in value.provides.iter() {
-            provides.push((*provide).try_into()?)
+        let mut multiarch = MultiArch::default();
+        for arch in value.arches.iter() {
+            let arch_value = 
+                PkgbuildArchSpecific::try_from(arch)?;
+            if arch.arch == b"any" {
+                multiarch.any = arch_value;
+                continue
+            }
+            if let Some(_) = 
+                multiarch.arches.insert(Architecture::from(arch.arch), arch_value) 
+            {
+                log::error!("Duplicated architecture {}", 
+                    str_from_slice_u8!(arch.arch));
+                return Err(Error::BrokenPKGBUILDs(Default::default()))
+            }
         }
         Ok(Self {
             pkgbase: string_from_slice_u8!(value.pkgbase),
             pkgs,
             version: PlainVersion::from_raw(
                 value.epoch, value.pkgver, value.pkgrel),
-            depends: value.depends.iter().map(|depend|
-                (*depend).into()).collect(),
-            makedepends: value.makedepends.iter().map(|makedepend|
-                (*makedepend).into()).collect(),
-            provides,
-            sources: value.sources.iter().map(|source|
-                (*source).into()).collect(),
-            cksums: cksums_from_raws(&value.cksums),
-            md5sums: hash_sums_from_hexes(&value.md5sums),
-            sha1sums: hash_sums_from_hexes(&value.sha1sums),
-            sha224sums: hash_sums_from_hexes(&value.sha224sums),
-            sha256sums: hash_sums_from_hexes(&value.sha256sums),
-            sha384sums: hash_sums_from_hexes(&value.sha384sums),
-            sha512sums: hash_sums_from_hexes(&value.sha512sums),
-            b2sums: hash_sums_from_hexes(&value.b2sums),
-            pkgver_func: value.pkgver_func,
+            pkgdesc: string_from_slice_u8!(value.pkgdesc),
+            url: string_from_slice_u8!(value.url),
+            license: vec_string_from_vec_slice_u8(&value.license),
+            install: string_from_slice_u8!(value.install),
+            changelog: string_from_slice_u8!(value.changelog),
+            validpgpkeys: vec_string_from_vec_slice_u8(&value.validgpgkeys),
+            noextract: vec_string_from_vec_slice_u8(&value.noextract),
+            groups: vec_string_from_vec_slice_u8(&value.groups),
+            multiarch,
+            backup: vec_string_from_vec_slice_u8(&value.backups),
+            options: (&value.options).into(),
+            pkgver_func: value.pkgver_func
         })
     }
 }
@@ -2724,105 +3239,244 @@ impl TryFrom<&PkgbuildsParsing<'_>> for Pkgbuilds {
 }
 
 impl Pkgbuild {
-    /// Get sources with the integrity checksums attached, i.e. get a `Vec` of 
-    /// `SourceWithInteg`, with each of them containing a cloned `Source`, and 
-    /// cloned integrity checksums.
-    /// 
-    /// This is useful if you want to download and prepare the sources in `Rust`
-    /// world directly without relying on `makepkg`'s internal implementation.
-    /// 
-    /// Note however, the result would always take the full space for all 
-    /// variants of checksums, even if you've disabled the parsing in the
-    /// `ParserScript`
-    pub fn get_sources_with_integ(&self) -> Vec<SourceWithInteg> {
-        let mut sources: Vec<SourceWithInteg> = Vec::new();
-        for source in self.sources.iter() {
-            sources.push(source.into())
-        }
-        for (source, cksum) in 
-            sources.iter_mut().zip(self.cksums.iter()) 
-        {
-            source.cksum = *cksum;
-        }
-        for (source, md5sum) in 
-            sources.iter_mut().zip(self.md5sums.iter()) 
-        {
-            source.md5sum = *md5sum;
-        }
-        for (source, sha1sum) in 
-            sources.iter_mut().zip(self.sha1sums.iter()) 
-        {
-            source.sha1sum = *sha1sum;
-        }
-        for (source, sha224sum) in 
-            sources.iter_mut().zip(self.sha224sums.iter()) 
-        {
-            source.sha224sum = *sha224sum;
-        }
-        for (source, sha256sum) in 
-            sources.iter_mut().zip(self.sha256sums.iter()) 
-        {
-            source.sha256sum = *sha256sum;
-        }
-        for (source, sha384sum) in 
-            sources.iter_mut().zip(self.sha384sums.iter()) 
-        {
-            source.sha384sum = *sha384sum;
-        }
-        for (source, sha512sum) in 
-            sources.iter_mut().zip(self.sha512sums.iter()) 
-        {
-            source.sha512sum = *sha512sum;
-        }
-        for (source, b2sum) in 
-            sources.iter_mut().zip(self.b2sums.iter()) 
-        {
-            source.b2sum = *b2sum;
-        }
-        sources
+    pkg_iter_all_arch!(self, sources_with_checksums, SourceWithChecksum);
+    pkg_iter_all_arch!(self, depends, Dependency);
+    pkg_iter_all_arch!(self, makedepends, MakeDependency);
+    pkg_iter_all_arch!(self, checkdepends, CheckDependency);
+    pkg_iter_all_arch!(self, optdepends, OptionalDependency);
+    pkg_iter_all_arch!(self, conflicts, Conflict);
+    pkg_iter_all_arch!(self, provides, Provide);
+    pkg_iter_all_arch!(self, replaces, Replace);
+
+    /// Get a result similar to `makepkg --printsrcinfo`, useful for formatting
+    #[cfg(feature = "srcinfo")]
+    pub fn srcinfo<'a>(&'a self) -> Srcinfo<'a> {
+        Srcinfo { pkgbuild: self }
     }
+
+    // /// Get a flattened list of options, note it would be impossible to go back
+    // /// to the original order of options from only the result options.
+    // pub fn options(&self) -> Options {
+    //     (&self.options).into()
+    // }
 }
 
-impl Pkgbuilds {
-    /// Get each `Pkgbuild`'s sources with the integrity checksums attached, 
-    /// i.e. get a `Vec` of `Vec` of `SourceWithInteg`, with each of them 
-    /// containing a cloned `Source`, and cloned integrity checksums.
-    /// 
-    /// This is a shortcut that calls `get_sources_with_integ()` for each entry
-    /// `Pkgbuild`s and collects the results into a `Vec`.
-    /// 
-    /// This is useful if you want to download and prepare the sources in `Rust`
-    /// world directly without relying on `makepkg`'s internal implementation.
-    /// 
-    /// Note however, the result would always take the full space for all 
-    /// variants of checksums, even if you've disabled the parsing in the
-    /// `ParserScript`
-    pub fn get_each_sources_with_integ(&self) -> Vec<Vec<SourceWithInteg>> {
-        self.entries.iter().map(|pkgbuild|
-            pkgbuild.get_sources_with_integ()).collect()
-    }
+#[cfg(feature = "srcinfo")]
+pub struct Srcinfo<'a> {
+    pub pkgbuild: &'a Pkgbuild
+}
 
-    /// Get all `Pkgbuild`'s sources with the integrity checksums attached,
-    /// i.e. get a `Vec` of `SourceWithInteg`, with each of them 
-    /// containing a cloned `Source`, and cloned integrity checksums.
-    /// 
-    /// This is a shortcut that calls `get_sources_with_integ()` for each entry
-    /// `Pkgbuild`s and take out all of the results to collect them into a giant
-    /// single `Vec`.
-    /// 
-    /// This is useful if you want to download and prepare the sources in `Rust`
-    /// world directly without relying on `makepkg`'s internal implementation.
-    /// 
-    /// Note however, the result would always take the full space for all 
-    /// variants of checksums, even if you've disabled the parsing in the
-    /// `ParserScript`
-    pub fn get_all_sources_with_integ(&self) -> Vec<SourceWithInteg> {
-        let mut sources = Vec::new();
-        for pkgbuild in self.entries.iter() {
-            let mut sources_this = 
-                pkgbuild.get_sources_with_integ();
-            sources.append(&mut sources_this);
+#[cfg(feature = "srcinfo")]
+impl<'a> Display for Srcinfo<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fn writeln_indented_str<S: AsRef<str>>(
+            f: &mut Formatter<'_>, title: &str, content: S
+        ) -> std::fmt::Result 
+        {
+            let content = content.as_ref();
+            if content.is_empty() { return Ok(()) }
+            writeln!(f, "\t{} = {}", title, content)
         }
-        sources
+        fn writeln_indented_display<D: Display>(
+            f: &mut Formatter<'_>, title: &str, content: D
+        ) -> std::fmt::Result 
+        {
+            writeln_indented_str(f, title, &content.to_string())
+        }
+        let pkgbuild = self.pkgbuild;
+        writeln!(f, "pkgbase = {}", pkgbuild.pkgbase)?;
+        writeln_indented_str(f, "pkgdesc", &pkgbuild.pkgdesc)?;
+        writeln_indented_str(f, "pkgver", &pkgbuild.version.pkgver)?;
+        writeln_indented_str(f, "pkgrel", &pkgbuild.version.pkgrel)?;
+        writeln_indented_str(f, "epoch", &pkgbuild.version.epoch)?;
+        writeln_indented_str(f, "url", &pkgbuild.url)?;
+        writeln_indented_str(f, "install", &pkgbuild.install)?;
+        writeln_indented_str(f, "changelog", &pkgbuild.changelog)?;
+        if pkgbuild.multiarch.arches.is_empty() {
+            writeln_indented_str(f, "arch", "any")?;
+        } else {
+            for (arch, _) in pkgbuild.multiarch.arches.iter() {
+                writeln_indented_str(f, "arch", arch)?;
+            }
+        }
+        fn writelns_indented_iter_str<I, S>(
+            f: &mut Formatter<'_>, title: &str, contents: I
+        ) -> std::fmt::Result
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<str>
+        {
+            for content in contents.into_iter() {
+                writeln_indented_str(f, title, content)?
+            }
+            Ok(())
+        }
+        fn writelns_indented_iter_display<I, D>(
+            f: &mut Formatter<'_>, title: &str, contents: I
+        ) -> std::fmt::Result
+        where
+            I: IntoIterator<Item = D>,
+            D: Display
+        {
+            for content in contents.into_iter() {
+                writeln_indented_display(f, title, content)?
+            }
+            Ok(())
+        }
+        writelns_indented_iter_str(f, "groups", &pkgbuild.groups)?;
+        writelns_indented_iter_str(f, "license", &pkgbuild.license)?;
+        let arch_specific = &pkgbuild.multiarch.any;
+        writelns_indented_iter_display(f, "checkdepends", &arch_specific.checkdepends)?;
+        writelns_indented_iter_display(f, "makedepends", &arch_specific.makedepends)?;
+        writelns_indented_iter_display(f, "depends", &arch_specific.depends)?;
+        writelns_indented_iter_display(f, "optdepends", &arch_specific.optdepends)?;
+        writelns_indented_iter_display(f, "provides", &arch_specific.provides)?;
+        writelns_indented_iter_display(f, "conflicts", &arch_specific.conflicts)?;
+        writelns_indented_iter_display(f, "replaces", &arch_specific.replaces)?;
+        writelns_indented_iter_str(f, "noextract", &pkgbuild.noextract)?;
+        macro_rules! write_option {
+            ($options: expr, $($option: ident),+) => {
+                $(
+                    if let Some(value) = $options.$option {
+                        writeln!(f, "\toptions = {}{}", 
+                            if value {""} else {"!"}, stringify!($option))?
+                    }
+                )+
+            };
+            ($options: expr) => {
+                write_option!($options, strip, docs, libtool, staticlibs, emptydirs, zipman, 
+                    ccache, distcc, buildflags, makeflags, debug, lto);
+            };
+        }
+        write_option!(pkgbuild.options);
+
+        writelns_indented_iter_str(f, "backup", &pkgbuild.backup)?;
+        #[derive(Default)]
+        struct StatChecksum {
+            cksum: bool,
+            md5sum: bool,
+            sha1sum: bool,
+            sha224sum: bool,
+            sha256sum: bool,
+            sha384sum: bool,
+            sha512sum: bool,
+            b2sum: bool,
+        }
+        impl StatChecksum {
+            fn ensure_least(&mut self) {
+                if !(self.cksum || self.md5sum || self.sha1sum || self.sha224sum
+                    || self.sha256sum || self.sha384sum || self.sha512sum ||
+                    self.b2sum)
+                {
+                    self.sha256sum = true
+                }
+            }
+        }
+        fn write_sources_and_stat_sums(f: &mut Formatter<'_>, arch_name: &str, arch_specific: &PkgbuildArchSpecific) -> std::result::Result<StatChecksum, std::fmt::Error> {
+            let mut stat = StatChecksum::default();
+            let title_temp;
+            let title = if arch_name.is_empty() {
+                "source"
+            } else {
+                title_temp = format!("source_{}", arch_name);
+                &title_temp
+            };
+            for source_with_checksum in arch_specific.sources_with_checksums.iter() {
+                writeln_indented_str(f, title, source_with_checksum.source.get_pkgbuild_source())?;
+                macro_rules! update_flag {
+                    ($($cksum: ident),+) => {
+                        $(
+                            if source_with_checksum.$cksum.is_some() { stat.$cksum = true }
+                        )+
+                    };
+                }
+                update_flag!(cksum, md5sum, sha1sum, sha224sum, sha256sum, sha384sum, sha512sum, b2sum);
+            }
+            stat.ensure_least();
+            Ok(stat)
+        }
+        let mut stat_checksums = write_sources_and_stat_sums(f, "", arch_specific)?;
+        writelns_indented_iter_str(f, "validpgpkeys", &pkgbuild.validpgpkeys)?;
+        fn suffix_from_arch_name(arch_name: &str) -> String {
+            if arch_name.is_empty() {
+                String::new()
+            } else {
+                format!("_{}", arch_name)
+            }
+        }
+        fn write_all_checksums(f: &mut Formatter<'_>, stat_checksums: &StatChecksum, 
+            arch_name: &str, arch_specific: &PkgbuildArchSpecific
+        ) -> std::fmt::Result 
+        {
+            let suffix = suffix_from_arch_name(arch_name);
+            macro_rules! write_checksums {
+                ($($cksum: ident),+) => {$(
+                    if stat_checksums.$cksum {
+                        let title = format!("{}s{}", stringify!($cksum), suffix);
+                        for source_with_checksum in arch_specific.sources_with_checksums.iter() {
+                            if let Some(bytes) = source_with_checksum.$cksum {
+                                write!(f, "\t{} = ", &title)?;
+                                write_byte_iter(f, bytes)?;
+                                writeln!(f)?
+                            } else {
+                                writeln_indented_str(f, &title, "SKIP")?
+                            }
+                        }
+                    }
+                )+};
+            }
+            write_checksums!(md5sum, sha1sum, sha224sum, sha256sum, sha384sum, sha512sum, b2sum);
+            Ok(())
+        }
+        write_all_checksums(f, &stat_checksums, "", &arch_specific)?;
+        for (arch, arch_specific) in pkgbuild.multiarch.arches.iter() {
+            let arch_name = arch.as_ref();
+            stat_checksums = write_sources_and_stat_sums(f, arch_name, arch_specific)?;
+            writelns_indented_iter_display(f, &format!("provides_{}", arch_name), &arch_specific.provides)?;
+            writelns_indented_iter_display(f, &format!("conflicts_{}", arch_name), &arch_specific.conflicts)?;
+            writelns_indented_iter_display(f, &format!("depends_{}", arch_name), &arch_specific.depends)?;
+            writelns_indented_iter_display(f, &format!("replaces_{}", arch_name), &arch_specific.replaces)?;
+            writelns_indented_iter_display(f, &format!("optdepends_{}", arch_name), &arch_specific.optdepends)?;
+            writelns_indented_iter_display(f, &format!("makedepends_{}", arch_name), &arch_specific.makedepends)?;
+            writelns_indented_iter_display(f, &format!("checkdepends_{}", arch_name), &arch_specific.checkdepends)?;
+            write_all_checksums(f, &stat_checksums, arch_name, arch_specific)?
+        }
+        for pkg in pkgbuild.pkgs.iter() {
+            writeln!(f, "\npkgname = {}", pkg.pkgname)?;
+            writeln_indented_str(f, "pkgdesc", &pkg.pkgdesc)?;
+            writeln_indented_str(f, "url", &pkg.url)?;
+            writeln_indented_str(f, "install", &pkg.install)?;
+            writeln_indented_str(f, "changelog", &pkg.changelog)?;
+            if ! multiarch_have_same_arches(&pkgbuild.multiarch, &pkg.multiarch) {
+                if pkg.multiarch.arches.is_empty() {
+                    writeln_indented_str(f, "arch", "any")?;
+                } else {
+                    for (arch, _) in pkg.multiarch.arches.iter() {
+                        writeln_indented_str(f, "arch", arch)?;
+                    }
+                }
+            }
+            writelns_indented_iter_str(f, "groups", &pkg.groups)?;
+            writelns_indented_iter_str(f, "license", &pkg.license)?;
+            let arch_specific = &pkg.multiarch.any;
+            writelns_indented_iter_display(f, "checkdepends", &arch_specific.checkdepends)?;
+            writelns_indented_iter_display(f, "depends", &arch_specific.depends)?;
+            writelns_indented_iter_display(f, "optdepends", &arch_specific.optdepends)?;
+            writelns_indented_iter_display(f, "provides", &arch_specific.provides)?;
+            writelns_indented_iter_display(f, "conflicts", &arch_specific.conflicts)?;
+            writelns_indented_iter_display(f, "replaces", &arch_specific.replaces)?;
+            write_option!(pkg.options);
+            writelns_indented_iter_str(f, "backup", &pkg.backup)?;
+            for (arch, arch_specific) in pkg.multiarch.arches.iter() {
+                let arch_name = arch.as_ref();
+                writelns_indented_iter_display(f, &format!("provides_{}", arch_name), &arch_specific.provides)?;
+                writelns_indented_iter_display(f, &format!("conflicts_{}", arch_name), &arch_specific.conflicts)?;
+                writelns_indented_iter_display(f, &format!("depends_{}", arch_name), &arch_specific.depends)?;
+                writelns_indented_iter_display(f, &format!("replaces_{}", arch_name), &arch_specific.replaces)?;
+                writelns_indented_iter_display(f, &format!("optdepends_{}", arch_name), &arch_specific.optdepends)?;
+                writelns_indented_iter_display(f, &format!("checkdepends_{}", arch_name), &arch_specific.checkdepends)?;
+            }
+        }
+        Ok(())
     }
 }

@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+env_logger = "0.11.2"
 hex = "0.4"
 log = "0.4"
 
@@ -41,6 +42,7 @@ serde = ["dep:serde", "serde/derive", "serde_bytes"]
 tempfile = ["dep:tempfile"]
 unsafe_str = []
 vercmp = []
+srcinfo = ["format"]
 __msgpack = ["serde", "rmp-serde"]
 
 [[example]]
@@ -60,7 +62,7 @@ required-features = ["tempfile"]
 [[example]]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
-required-features = ["format", "tempfile"]
+required-features = ["srcinfo", "tempfile"]
 
 [[example]]
 name = "spawner"
