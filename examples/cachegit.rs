@@ -12,6 +12,7 @@ struct Arg {
     #[arg(short, long)]
     /// Print a config to be used for 7Ji/git-mirrorer and early quit
     prconf: bool,
+    #[clap(default_value_t)]
     /// The prefix of a 7Ji/git-mirrorer instance, e.g. http://gmr.lan
     gmr: String,
 }
@@ -103,14 +104,19 @@ fn print_config(pkgbuild: &Pkgbuild) {
     }
 }
 
-fn main() {
+fn main() -> Result<(), &'static str> {
     let arg = Arg::parse();
     let pkgbuild = pkgbuild::parse_one(Some("PKGBUILD")).unwrap();
     if arg.prconf {
         print_config(&pkgbuild);
-        return
+        return Ok(())
+    }
+    if arg.gmr.is_empty() {
+        eprintln!("You must set gmr url!");
+        return Err("No GMR url set");
     }
     for source_with_checksum in pkgbuild.sources_with_checksums() {
         cache_source(&source_with_checksum.source, arg.allrefs, &arg.gmr);
     }
+    Ok(())
 }
