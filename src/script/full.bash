@@ -14,8 +14,8 @@ _arch_specific_items=(
 _pkg_arch_specific_items=(
   {depend,optdepend,provide,conflict,replace}s
 )
-while read -r line; do
-  source "${line}"
+while read -r _line; do
+  source "${_line}"
   echo PKGBUILD
   pkgbase="${pkgbase:-${pkgname}}"
   echo pkgbase:"${pkgbase}"
@@ -164,9 +164,7 @@ while read -r line; do
     fi
     echo END
   done
-  unset -v pkgdesc url license groups backup options install changelog
   unset -f package{,_"${pkgbase}"} "${pkgname[@]/#/package_}"
+  unset -v pkgbase pkgname arch pkgver pkgrel epoch pkgdesc url install changelog "${_pkgbuild_array_items[@]}" "${_arch_specific_items[@]}"
   echo END
-  unset -v pkgbase pkgver pkgrel epoch pkgdesc url license install changelog \
-    validgpgkeys noextract groups backups options
 done
