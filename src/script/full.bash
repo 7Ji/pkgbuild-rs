@@ -32,7 +32,7 @@ while read -r _line; do
       echo "${_items}:${_item}"
     done
   done
-  if [[ $(type -t package) == function ]]; then
+  if [[ $(type -t pkgver) == function ]]; then
     echo pkgver_func:y
   else
     echo pkgver_func:n
@@ -164,7 +164,7 @@ while read -r _line; do
     fi
     echo END
   done
-  unset -f package{,_"${pkgbase}"} "${pkgname[@]/#/package_}"
+  unset -f pkgver package{,_"${pkgbase}"} "${pkgname[@]/#/package_}"
   unset -v pkgbase pkgname arch pkgver pkgrel epoch pkgdesc url install changelog "${_pkgbuild_array_items[@]}" "${_arch_specific_items[@]}"
   echo END
 done
