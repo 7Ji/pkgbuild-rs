@@ -1,7 +1,3 @@
-LIBRARY='/usr/share/makepkg'
-MAKEPKG_CONF='/etc/makepkg.conf'
-source '/usr/share/makepkg/util.sh'
-source '/usr/share/makepkg/source.sh'
 source_makepkg_config
 _ifs_stored="${IFS}"
 while read -r _line; do
