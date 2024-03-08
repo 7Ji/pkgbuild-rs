@@ -221,6 +221,12 @@ impl ParserScriptBuilder {
             names.iter().for_each(|name|
                 buffer_extend_dump_plain(buffer, name, indent_level))
         }
+        fn buffer_extend_dump_array_license_workaround(
+            buffer: &mut Vec<u8>, indent_level: usize
+        ) {
+            buffer_extend_indent(buffer, indent_level);
+            buffer.extend_from_slice(b"license=(\"${license[@]//\n/ }\")\n");
+        }
         fn buffer_extend_dump_array(
             buffer: &mut Vec<u8>, name: &[u8], indent_level: usize
         ) {
@@ -311,6 +317,7 @@ impl ParserScriptBuilder {
             "script/10_source_config_and_start_loop.bash"));
         buffer_extend_multi_dump_plain(&mut buffer, 
             PKGBUILD_PLAIN_ITEMS, 1);
+        buffer_extend_dump_array_license_workaround(&mut buffer, 1);
         buffer_extend_multi_dump_array(&mut buffer, 
             PKGBUILD_ARRAY_ITEMS, 1);
         buffer.extend_from_slice(include_bytes!(
@@ -349,6 +356,7 @@ impl ParserScriptBuilder {
             "script/70_pkg_array_til_dump.bash"));
         buffer_extend_multi_dump_plain(&mut buffer, 
             PACKAGE_PLAIN_ITEMS, 2);
+        buffer_extend_dump_array_license_workaround(&mut buffer, 2);
         buffer_extend_multi_dump_array(&mut buffer, 
             PACKAGE_ARRAY_ITEMS, 2);
         buffer_extend_indent(&mut buffer, 2);
