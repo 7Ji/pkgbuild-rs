@@ -8,6 +8,9 @@ To get a big enough sample to benchmark, you could use [7Ji/arch_pkgbuilds_dumpe
 ## cachegit
 Cache git sources for a PKGBUILD from an upstream [7Ji/git-mirrorer](https://github.com/7Ji/git-mirrorer) instance to save bandwidth. This also supports to generate a config for 7Ji/git-mirrorer by `cachegit --prconf` to contain all git sources in the current PKGBUILD.
 
+## genscript
+Generate the parser script at a given path, so you can use it by yourself
+
 ## download
 A fake downloader that pretends to download sources defined in a PKGBUILD, it does not actually download them, but demonstrates how you can implement your download logic natively in Rust.
 
