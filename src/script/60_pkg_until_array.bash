@@ -1,8 +1,3 @@
-)'=' ]]; then
-        if [[ "${_line}" == *';' ]]; then
-          eval "${_line}"
-        else
-          echo 'Unfinished package value line'
-          exit 5
-        fi
+)'+'?'=' ]]; then
+        eval "${_line}"
       elif [[ "${_line}" =~ ((arch

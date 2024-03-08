@@ -225,15 +225,11 @@ impl ParserScriptBuilder {
             buffer: &mut Vec<u8>, name: &[u8], indent_level: usize
         ) {
             buffer_extend_indent(buffer, indent_level);
-            buffer.extend_from_slice(b"for _item in \"${");
+            buffer.extend_from_slice(b"printf '");
             buffer.extend_from_slice(name);
-            buffer.extend_from_slice(b"[@]}\"; do\n");
-            buffer_extend_indent(buffer, indent_level + 1);
-            buffer.extend_from_slice(b"echo ");
+            buffer.extend_from_slice(b":%s\\n' \"${");
             buffer.extend_from_slice(name);
-            buffer.extend_from_slice(b":\"${_item}\"\n");
-            buffer_extend_indent(buffer, indent_level);
-            buffer.extend_from_slice(b"done\n");
+            buffer.extend_from_slice(b"[@]}\"\n");
         }
         fn buffer_extend_multi_dump_array(
             buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize
@@ -256,15 +252,11 @@ impl ParserScriptBuilder {
             buffer.push(b'\n');
             for items in names.iter() {
                 buffer_extend_indent(buffer, indent_level);
-                buffer.extend_from_slice(b"for _item in \"${_arch_");
+                buffer.extend_from_slice(b"printf '");
                 buffer.extend_from_slice(items);
-                buffer.extend_from_slice(b"[@]}\"; do\n");
-                buffer_extend_indent(buffer, indent_level + 1);
-                buffer.extend_from_slice(b"echo ");
+                buffer.extend_from_slice(b":%s\\n' \"${_arch_");
                 buffer.extend_from_slice(items);
-                buffer.extend_from_slice(b":\"${_item}\"\n");
-                buffer_extend_indent(buffer, indent_level);
-                buffer.extend_from_slice(b"done\n");
+                buffer.extend_from_slice(b"[@]}\"\n");
             }
             buffer_extend_indent(buffer, indent_level);
             buffer.extend_from_slice(b"unset -v");
@@ -291,7 +283,7 @@ impl ParserScriptBuilder {
             b"pkgbase", b"pkgver", b"pkgrel", b"epoch", b"pkgdesc",
             b"url", b"install", b"changelog"];
         const PKGBUILD_ARRAY_ITEMS: &[&[u8]] = &[
-            b"license", b"validgpgkeys", b"noextract", 
+            b"license", b"validpgpkeys", b"noextract", 
             b"groups", b"backup", b"options"];
         const PACKAGE_PLAIN_ITEMS: &[&[u8]] = &[
             b"pkgdesc", b"url", b"install", b"changelog"];
@@ -1127,38 +1119,40 @@ impl<'a> PkgbuildsParsing<'a> {
                     },
                     _ => {
                         key_value_from_slice_u8!(line, key, value);
-                        match key {
-                            b"pkgbase" => pkgbuild.pkgbase = value,
-                            b"pkgver" => pkgbuild.pkgver = value,
-                            b"pkgrel" => pkgbuild.pkgrel = value,
-                            b"epoch" => pkgbuild.epoch = value,
-                            b"pkgdesc" => pkgbuild.pkgdesc = value,
-                            b"url" => pkgbuild.url = value,
-                            b"license" => pkgbuild.license.push(value),
-                            b"install" => pkgbuild.install = value,
-                            b"changelog" => pkgbuild.changelog = value,
-                            b"validgpgkeys" => 
-                                pkgbuild.validgpgkeys.push(value),
-                            b"noextract" => pkgbuild.noextract.push(value),
-                            b"groups" => pkgbuild.groups.push(value),
-                            b"backup" => pkgbuild.backups.push(value),
-                            b"options" => pkgbuild.options.push(value),
-                            b"pkgver_func" => match value {
-                                b"y" => pkgbuild.pkgver_func = true,
-                                b"n" => pkgbuild.pkgver_func = false,
+                        if ! value.is_empty() {
+                            match key {
+                                b"pkgbase" => pkgbuild.pkgbase = value,
+                                b"pkgver" => pkgbuild.pkgver = value,
+                                b"pkgrel" => pkgbuild.pkgrel = value,
+                                b"epoch" => pkgbuild.epoch = value,
+                                b"pkgdesc" => pkgbuild.pkgdesc = value,
+                                b"url" => pkgbuild.url = value,
+                                b"license" => pkgbuild.license.push(value),
+                                b"install" => pkgbuild.install = value,
+                                b"changelog" => pkgbuild.changelog = value,
+                                b"validpgpkeys" => 
+                                    pkgbuild.validgpgkeys.push(value),
+                                b"noextract" => pkgbuild.noextract.push(value),
+                                b"groups" => pkgbuild.groups.push(value),
+                                b"backup" => pkgbuild.backups.push(value),
+                                b"options" => pkgbuild.options.push(value),
+                                b"pkgver_func" => match value {
+                                    b"y" => pkgbuild.pkgver_func = true,
+                                    b"n" => pkgbuild.pkgver_func = false,
+                                    _ => {
+                                        log::error!("Invalid pkgver_func value: {}", 
+                                        str_from_slice_u8!(line));
+                                        return Err(Error::ParserScriptIllegalOutput(
+                                            line.into()))
+                                    }
+                                }
                                 _ => {
-                                    log::error!("Invalid pkgver_func value: {}", 
-                                       str_from_slice_u8!(line));
+                                    log::error!("Line '{}' does not contain valid \
+                                    key or keyword when expecting pkgbuild info", 
+                                    str_from_slice_u8!(line));
                                     return Err(Error::ParserScriptIllegalOutput(
                                         line.into()))
                                 }
-                            }
-                            _ => {
-                                log::error!("Line '{}' does not contain valid \
-                                   key or keyword when expecting pkgbuild info", 
-                                   str_from_slice_u8!(line));
-                                return Err(Error::ParserScriptIllegalOutput(
-                                    line.into()))
                             }
                         }
                         state = ParsingState::Pkgbuild(pkgbuild)
@@ -1178,22 +1172,24 @@ impl<'a> PkgbuildsParsing<'a> {
                     },
                     _ => {
                         key_value_from_slice_u8!(line, key, value);
-                        match key {
-                            b"pkgname" => package.pkgname = value,
-                            b"pkgdesc" => package.pkgdesc = value,
-                            b"url" => package.url = value,
-                            b"license" => package.license.push(value),
-                            b"groups" => package.groups.push(value),
-                            b"backup" => package.backup.push(value),
-                            b"options" => package.options.push(value),
-                            b"install" => package.install = value,
-                            b"changelog" => package.changelog = value,
-                            _ => {
-                                log::error!("Line '{}' does not contain valid \
-                                   key or keyword when expecting pkgbuild info", 
-                                   str_from_slice_u8!(line));
-                                return Err(Error::ParserScriptIllegalOutput(
-                                    line.into()))
+                        if ! value.is_empty() {
+                            match key {
+                                b"pkgname" => package.pkgname = value,
+                                b"pkgdesc" => package.pkgdesc = value,
+                                b"url" => package.url = value,
+                                b"license" => package.license.push(value),
+                                b"groups" => package.groups.push(value),
+                                b"backup" => package.backup.push(value),
+                                b"options" => package.options.push(value),
+                                b"install" => package.install = value,
+                                b"changelog" => package.changelog = value,
+                                _ => {
+                                    log::error!("Line '{}' does not contain valid \
+                                    key or keyword when expecting pkgbuild info", 
+                                    str_from_slice_u8!(line));
+                                    return Err(Error::ParserScriptIllegalOutput(
+                                        line.into()))
+                                }
                             }
                         }
                         state = ParsingState::Package(pkgbuild, package)
@@ -1211,20 +1207,22 @@ impl<'a> PkgbuildsParsing<'a> {
                     },
                     _ => {
                         key_value_from_slice_u8!(line, key, value);
-                        match key {
-                            b"arch" => arch.arch = value,
-                            b"checkdepends" => arch.checkdepends.push(value),
-                            b"depends" => arch.depends.push(value),
-                            b"optdepends" => arch.optdepends.push(value),
-                            b"provides" => arch.provides.push(value),
-                            b"conflicts" => arch.conflicts.push(value),
-                            b"replaces" => arch.replaces.push(value),
-                            _ => {
-                                log::error!("Line '{}' does not contain valid \
-                                   key or keyword when expecting package arch \
-                                   info", str_from_slice_u8!(line));
-                                return Err(Error::ParserScriptIllegalOutput(
-                                    line.into()))
+                        if ! value.is_empty() {
+                            match key {
+                                b"arch" => arch.arch = value,
+                                b"checkdepends" => arch.checkdepends.push(value),
+                                b"depends" => arch.depends.push(value),
+                                b"optdepends" => arch.optdepends.push(value),
+                                b"provides" => arch.provides.push(value),
+                                b"conflicts" => arch.conflicts.push(value),
+                                b"replaces" => arch.replaces.push(value),
+                                _ => {
+                                    log::error!("Line '{}' does not contain valid \
+                                    key or keyword when expecting package arch \
+                                    info", str_from_slice_u8!(line));
+                                    return Err(Error::ParserScriptIllegalOutput(
+                                        line.into()))
+                                }
                             }
                         }
                         state = ParsingState::PackageArchSpecific(
@@ -1242,30 +1240,32 @@ impl<'a> PkgbuildsParsing<'a> {
                     },
                     _ => {
                         key_value_from_slice_u8!(line, key, value);
-                        match key {
-                            b"arch" => arch.arch = value,
-                            b"source" => arch.sources.push(value),
-                            b"cksums" => arch.cksums.push(value),
-                            b"md5sums" => arch.md5sums.push(value),
-                            b"sha1sums" => arch.sha1sums.push(value),
-                            b"sha224sums" => arch.sha224sums.push(value),
-                            b"sha256sums" => arch.sha256sums.push(value),
-                            b"sha384sums" => arch.sha384sums.push(value),
-                            b"sha512sums" => arch.sha512sums.push(value),
-                            b"b2sums" => arch.b2sums.push(value),
-                            b"depends" => arch.depends.push(value),
-                            b"makedepends" => arch.makedepends.push(value),
-                            b"checkdepends" => arch.checkdepends.push(value),
-                            b"optdepends" => arch.optdepends.push(value),
-                            b"conflicts" => arch.conflicts.push(value),
-                            b"provides" => arch.provides.push(value),
-                            b"replaces" => arch.replaces.push(value),
-                            _ => {
-                                log::error!("Line '{}' does not contain valid \
-                                   key or keyword when expecting pkgbuild arch \
-                                   info", str_from_slice_u8!(line));
-                                return Err(Error::ParserScriptIllegalOutput(
-                                    line.into()))
+                        if ! value.is_empty() {
+                            match key {
+                                b"arch" => arch.arch = value,
+                                b"source" => arch.sources.push(value),
+                                b"cksums" => arch.cksums.push(value),
+                                b"md5sums" => arch.md5sums.push(value),
+                                b"sha1sums" => arch.sha1sums.push(value),
+                                b"sha224sums" => arch.sha224sums.push(value),
+                                b"sha256sums" => arch.sha256sums.push(value),
+                                b"sha384sums" => arch.sha384sums.push(value),
+                                b"sha512sums" => arch.sha512sums.push(value),
+                                b"b2sums" => arch.b2sums.push(value),
+                                b"depends" => arch.depends.push(value),
+                                b"makedepends" => arch.makedepends.push(value),
+                                b"checkdepends" => arch.checkdepends.push(value),
+                                b"optdepends" => arch.optdepends.push(value),
+                                b"conflicts" => arch.conflicts.push(value),
+                                b"provides" => arch.provides.push(value),
+                                b"replaces" => arch.replaces.push(value),
+                                _ => {
+                                    log::error!("Line '{}' does not contain valid \
+                                    key or keyword when expecting pkgbuild arch \
+                                    info", str_from_slice_u8!(line));
+                                    return Err(Error::ParserScriptIllegalOutput(
+                                        line.into()))
+                                }
                             }
                         }
                         state = ParsingState::PkgbuildArchSpecific(
