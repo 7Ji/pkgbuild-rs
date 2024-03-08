@@ -1,7 +1,7 @@
     echo END
-    if [[ " ${_arch_collapsed} " =~ ' any ' ]]; then
-      if [[ "${#_arch_collapsed}" != 5 ]]; then
-        echo "ERROR: Architecture 'any' found when multiple architecture defined"
+    if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
+      if [[ "${#_arch_collapsed}" != 3 ]]; then
+        echo "ERROR: Package architecture 'any' found when multiple architecture defined"
         exit 6
       fi
     else
