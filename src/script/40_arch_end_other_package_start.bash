@@ -4,6 +4,7 @@
   _name_collapsed="${pkgname[*]}"
   _pkg_used=''
   for _pkgname in "${pkgname[@]}"; do
+  (
     echo PACKAGE
     echo pkgname:"${_pkgname}"
     if [[ $(type -t package_"${_pkgname}") == function ]]; then
@@ -17,7 +18,7 @@
       _pkg_used='y'
     elif [[ "${_pkgname}" == "${pkgbase}" ]]; then
       echo END
-      continue
+      exit
     else
       echo "No package split function for ${_pkgname}"
       exit 4

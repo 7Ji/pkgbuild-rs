@@ -1,6 +1,7 @@
 source_makepkg_config
 _ifs_stored="${IFS}"
 while read -r _line; do
+(
   source "${_line}"
   echo PKGBUILD
   pkgbase="${pkgbase:-${pkgname}}"
@@ -71,13 +72,13 @@ while read -r _line; do
       printf 'conflicts:%s\n' "${_arch_conflicts[@]}"
       printf 'provides:%s\n' "${_arch_provides[@]}"
       printf 'replaces:%s\n' "${_arch_replaces[@]}"
-      unset -v source_"${_arch}" cksums_"${_arch}" md5sums_"${_arch}" sha1sums_"${_arch}" sha224sums_"${_arch}" sha256sums_"${_arch}" sha384sums_"${_arch}" sha512sums_"${_arch}" b2sums_"${_arch}" depends_"${_arch}" makedepends_"${_arch}" checkdepends_"${_arch}" optdepends_"${_arch}" conflicts_"${_arch}" provides_"${_arch}" replaces_"${_arch}"
       echo END
     done
   fi
   _name_collapsed="${pkgname[*]}"
   _pkg_used=''
   for _pkgname in "${pkgname[@]}"; do
+  (
     echo PACKAGE
     echo pkgname:"${_pkgname}"
     if [[ $(type -t package_"${_pkgname}") == function ]]; then
@@ -91,12 +92,11 @@ while read -r _line; do
       _pkg_used='y'
     elif [[ "${_pkgname}" == "${pkgbase}" ]]; then
       echo END
-      continue
+      exit
     else
       echo "No package split function for ${_pkgname}"
       exit 4
     fi
-    unset -v pkgdesc url install changelog license groups backup options checkdepends depends optdepends provides conflicts replaces
     _arch_backup=("${arch[@]}")
     IFS=$'\n'
     _lines=($(declare -f "${_pkg_func}"))
@@ -155,7 +155,6 @@ while read -r _line; do
         printf 'provides:%s\n' "${_arch_provides[@]}"
         printf 'conflicts:%s\n' "${_arch_conflicts[@]}"
         printf 'replaces:%s\n' "${_arch_replaces[@]}"
-        unset -v source_"${_arch}" cksums_"${_arch}" md5sums_"${_arch}" sha1sums_"${_arch}" sha224sums_"${_arch}" sha256sums_"${_arch}" sha384sums_"${_arch}" sha512sums_"${_arch}" b2sums_"${_arch}" depends_"${_arch}" makedepends_"${_arch}" checkdepends_"${_arch}" optdepends_"${_arch}" conflicts_"${_arch}" provides_"${_arch}" replaces_"${_arch}"
         echo END
       done
     fi
@@ -163,8 +162,8 @@ while read -r _line; do
       arch=("${_arch_backup[@]}")
     fi
     echo END
+  )
   done
-  unset -f pkgver package{,_"${pkgbase}"} "${pkgname[@]/#/package_}"
-  unset -v pkgname arch pkgbase pkgver pkgrel epoch pkgdesc url install changelog license validpgpkeys noextract groups backup options source cksums md5sums sha1sums sha224sums sha256sums sha384sums sha512sums b2sums depends makedepends checkdepends optdepends conflicts provides replaces
   echo END
+)
 done

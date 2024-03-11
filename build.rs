@@ -69,14 +69,6 @@ fn main() {
             buffer.extend_from_slice(items);
             buffer.extend_from_slice(b"[@]}\"\n");
         }
-        buffer_extend_indent(buffer, indent_level);
-        buffer.extend_from_slice(b"unset -v");
-        for items in PKGBUILD_ARCH_SPECIFIC_ARRAY_ITEMS.iter() {
-            buffer.push(b' ');
-            buffer.extend_from_slice(items);
-            buffer.extend_from_slice(b"_\"${_arch}\"");
-        }
-        buffer.push(b'\n');
     }
     fn buffer_extend_multicase(buffer: &mut Vec<u8>, names: &[&[u8]]) {
         let mut started = false;
@@ -126,16 +118,6 @@ fn main() {
         PKGBUILD_ARCH_SPECIFIC_ARRAY_ITEMS, 3);
     buffer.extend_from_slice(include_bytes!(
         "src/script/40_arch_end_other_package_start.bash"));
-    buffer_extend_indent(&mut buffer, 2);
-    buffer.extend_from_slice(b"unset -v");
-    for items in PACKAGE_PLAIN_ITEMS.iter().chain(
-        PACKAGE_ARRAY_ITEMS.iter()).chain(
-        PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS.iter())
-    {
-        buffer.push(b' ');
-        buffer.extend_from_slice(items);
-    }
-    buffer.push(b'\n');
     buffer.extend_from_slice(include_bytes!(
         "src/script/50_pkg_until_plain.bash"));
     buffer_extend_multicase(&mut buffer, PACKAGE_PLAIN_ITEMS);
@@ -167,15 +149,7 @@ fn main() {
         PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 4);
     buffer.extend_from_slice(include_bytes!(
         "src/script/90_pkg_end_other.bash"));
-    for items in PKGBUILD_PLAIN_ITEMS.iter().chain(
-        PKGBUILD_ARRAY_ITEMS.iter()).chain(
-        PKGBUILD_ARCH_SPECIFIC_ARRAY_ITEMS.iter()) 
-    {
-        buffer.push(b' ');
-        buffer.extend_from_slice(items);
-    }
-    buffer.push(b'\n');
     buffer_extend_indent(&mut buffer, 1);
-    buffer.extend_from_slice(b"echo END\ndone\n");
+    buffer.extend_from_slice(b"echo END\n)\ndone\n");
     file.write_all(&buffer).expect("Failed to write to script");
 }
