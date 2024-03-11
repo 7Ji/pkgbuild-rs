@@ -49,7 +49,7 @@ fn main() {
             buffer_extend_dump_array(buffer, name, indent_level))
     }
     fn buffer_extend_dump_arch_array(
-        buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize
+        buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize, unset: bool
     ) {
         buffer_extend_indent(buffer, indent_level);
         buffer.extend_from_slice(b"declare -n");
@@ -69,17 +69,80 @@ fn main() {
             buffer.extend_from_slice(items);
             buffer.extend_from_slice(b"[@]}\"\n");
         }
-    }
-    fn buffer_extend_multicase(buffer: &mut Vec<u8>, names: &[&[u8]]) {
-        let mut started = false;
-        for name in names.iter() {
-            if started {
-                buffer.push(b'|')
-            } else {
-                started = true
+        if unset {
+            buffer_extend_indent(buffer, indent_level);
+            buffer.extend_from_slice(b"unset -v");
+            for items in PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS.iter() {
+                buffer.push(b' ');
+                buffer.extend_from_slice(items);
+                buffer.extend_from_slice(b"_\"${_arch}\"");
             }
-            buffer.extend_from_slice(name)
+            buffer.push(b'\n');
         }
+    }
+    fn buffer_extend_case_flag(buffer: &mut Vec<u8>, name: &[u8], indent_level: usize, wait_line: bool) {
+        buffer_extend_indent(buffer, indent_level);
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"*)\n");
+        buffer_extend_indent(buffer, indent_level + 1);
+        if wait_line {
+            buffer.extend_from_slice(b"if [[ \"${_line}\" == *');' ]]; then\n");
+            buffer_extend_indent(buffer, indent_level + 2);
+        }
+        buffer.extend_from_slice(b"eval \"${_line}\"\n");
+        if wait_line {
+            buffer_extend_indent(buffer, indent_level + 1);
+            buffer.extend_from_slice(b"else\n");
+            buffer_extend_indent(buffer, indent_level + 2);
+            buffer.extend_from_slice(b"_buffer=\"${_line}\"\n");
+            buffer_extend_indent(buffer, indent_level + 1);
+            buffer.extend_from_slice(b"fi\n");
+        }
+        buffer_extend_indent(buffer, indent_level + 1);
+        buffer.extend_from_slice(b"_pkg_");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"='y'\n");
+        buffer_extend_indent(buffer, indent_level + 1);
+        buffer.extend_from_slice(b";;\n");
+    }
+    fn buffer_extend_cases_flags(buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize, wait_line: bool) {
+        names.iter().for_each(|name|buffer_extend_case_flag(buffer, name, indent_level, wait_line))
+    }
+    fn buffer_extend_dump_pkg_plain(
+        buffer: &mut Vec<u8>, name: &[u8], indent_level: usize
+    ) {
+        buffer_extend_indent(buffer, indent_level);
+        buffer.extend_from_slice(b"[[ \"${_pkg_");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"}\" ]] && echo ");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b":\"${");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"}\"\n");
+    }
+    fn buffer_extend_multi_dump_pkg_plain(
+        buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize
+    ) {
+        names.iter().for_each(|name|
+            buffer_extend_dump_pkg_plain(buffer, name, indent_level))
+    }
+    fn buffer_extend_dump_pkg_array(
+        buffer: &mut Vec<u8>, name: &[u8], indent_level: usize
+    ) {
+        buffer_extend_indent(buffer, indent_level);
+        buffer.extend_from_slice(b"[[ \"${_pkg_");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"}\" ]] && printf '");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b":%s\\n' \"${");
+        buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"[@]}\"\n");
+    }
+    fn buffer_extend_multi_dump_pkg_array(
+        buffer: &mut Vec<u8>, names: &[&[u8]], indent_level: usize
+    ) {
+        names.iter().for_each(|name|
+            buffer_extend_dump_pkg_array(buffer, name, indent_level))
     }
     // Try to expand as many loops as possible
     const PKGBUILD_PLAIN_ITEMS: &[&[u8]] = &[
@@ -115,38 +178,46 @@ fn main() {
     buffer.extend_from_slice(include_bytes!(
         "src/script/30_arch_end_any_init_other.bash"));
     buffer_extend_dump_arch_array(&mut buffer, 
-        PKGBUILD_ARCH_SPECIFIC_ARRAY_ITEMS, 3);
+        PKGBUILD_ARCH_SPECIFIC_ARRAY_ITEMS, 3, true);
     buffer.extend_from_slice(include_bytes!(
         "src/script/40_arch_end_other_package_start.bash"));
     buffer.extend_from_slice(include_bytes!(
-        "src/script/50_pkg_until_plain.bash"));
-    buffer_extend_multicase(&mut buffer, PACKAGE_PLAIN_ITEMS);
+        "src/script/50_pkg_until_cases.bash"));
+    buffer_extend_cases_flags(&mut buffer, PACKAGE_PLAIN_ITEMS, 5, false);
+    buffer_extend_case_flag(&mut buffer, b"arch", 5, true);
+    buffer_extend_cases_flags(&mut buffer, PACKAGE_ARRAY_ITEMS, 5, true);
+    buffer_extend_cases_flags(&mut buffer, PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 5, true);
+    // buffer_extend_indent(&mut buffer, 2);
+    // buffer.extend_from_slice(b"esac\n");
     buffer.extend_from_slice(include_bytes!(
-        "src/script/60_pkg_until_array.bash"));
-    for items in PACKAGE_ARRAY_ITEMS.iter() {
-        buffer.push(b'|');
-        buffer.extend_from_slice(items)
-    }
-    buffer.extend_from_slice(b")|(");
-    buffer_extend_multicase(&mut buffer, 
-        PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS);
-    buffer.extend_from_slice(include_bytes!(
-        "src/script/70_pkg_array_til_dump.bash"));
-    buffer_extend_multi_dump_plain(&mut buffer, 
-        PACKAGE_PLAIN_ITEMS, 2);
+        "src/script/60_pkg_end_cases.bash"));
+    // buffer_extend_multicase(&mut buffer, PACKAGE_PLAIN_ITEMS);
+    // buffer.extend_from_slice(include_bytes!(
+    //     "src/script/60_pkg_until_array.bash"));
+    // for items in PACKAGE_ARRAY_ITEMS.iter() {
+    //     buffer.push(b'|');
+    //     buffer.extend_from_slice(items)
+    // }
+    // buffer.extend_from_slice(b")|(");
+    // buffer_extend_multicase(&mut buffer, 
+    //     PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS);
+    // buffer.extend_from_slice(include_bytes!(
+    //     "src/script/70_pkg_array_til_dump.bash"));
     buffer_extend_dump_array_license_workaround(&mut buffer, 2);
-    buffer_extend_multi_dump_array(&mut buffer, 
+    buffer_extend_multi_dump_pkg_plain(&mut buffer, 
+        PACKAGE_PLAIN_ITEMS, 2);
+    buffer_extend_multi_dump_pkg_array(&mut buffer, 
         PACKAGE_ARRAY_ITEMS, 2);
     buffer_extend_indent(&mut buffer, 2);
     buffer.extend_from_slice(b"echo PACKAGEARCH\n");
     buffer_extend_indent(&mut buffer, 2);
     buffer.extend_from_slice(b"echo arch:any\n");
-    buffer_extend_multi_dump_array(&mut buffer, 
+    buffer_extend_multi_dump_pkg_array(&mut buffer, 
         PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 2);
     buffer.extend_from_slice(include_bytes!(
         "src/script/80_pkg_arch_end_any_init_other.bash"));
     buffer_extend_dump_arch_array(&mut buffer, 
-        PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 4);
+        PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 4, false);
     buffer.extend_from_slice(include_bytes!(
         "src/script/90_pkg_end_other.bash"));
     buffer_extend_indent(&mut buffer, 1);

@@ -72,6 +72,7 @@ while read -r _line; do
       printf 'conflicts:%s\n' "${_arch_conflicts[@]}"
       printf 'provides:%s\n' "${_arch_provides[@]}"
       printf 'replaces:%s\n' "${_arch_replaces[@]}"
+      unset -v checkdepends_"${_arch}" depends_"${_arch}" optdepends_"${_arch}" provides_"${_arch}" conflicts_"${_arch}" replaces_"${_arch}"
       echo END
     done
   fi
@@ -110,34 +111,137 @@ while read -r _line; do
           eval "${_buffer}"
           _buffer=
         fi
-      elif [[ "${_line}" =~ (pkgdesc|url|install|changelog)'+'?'=' ]]; then
-        eval "${_line}"
-      elif [[ "${_line}" =~ ((arch|license|groups|backup|options)|(checkdepends|depends|optdepends|provides|conflicts|replaces)(|_.+))'=('* ]]; then
-        if [[ "${_line}" == *');' ]]; then
-          eval "${_line}"
-        else
-          _buffer="${_line}"
-        fi
+      else
+        [[ "${_line}" != *=* ]] && continue
+        _line_value="${_line#*=}"
+        _line_key="${_line%%=*}"
+        _line="${_line_key##* }=${_line_value}"
+        case "${_line}" in
+          pkgdesc*)
+            eval "${_line}"
+            _pkg_pkgdesc='y'
+            ;;
+          url*)
+            eval "${_line}"
+            _pkg_url='y'
+            ;;
+          install*)
+            eval "${_line}"
+            _pkg_install='y'
+            ;;
+          changelog*)
+            eval "${_line}"
+            _pkg_changelog='y'
+            ;;
+          arch*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_arch='y'
+            ;;
+          license*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_license='y'
+            ;;
+          groups*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_groups='y'
+            ;;
+          backup*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_backup='y'
+            ;;
+          options*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_options='y'
+            ;;
+          checkdepends*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_checkdepends='y'
+            ;;
+          depends*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_depends='y'
+            ;;
+          optdepends*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_optdepends='y'
+            ;;
+          provides*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_provides='y'
+            ;;
+          conflicts*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_conflicts='y'
+            ;;
+          replaces*)
+            if [[ "${_line}" == *');' ]]; then
+              eval "${_line}"
+            else
+              _buffer="${_line}"
+            fi
+            _pkg_replaces='y'
+            ;;
+        esac
       fi
     done
-    echo pkgdesc:"${pkgdesc}"
-    echo url:"${url}"
-    echo install:"${install}"
-    echo changelog:"${changelog}"
     license=("${license[@]//
 / }")
-    printf 'license:%s\n' "${license[@]}"
-    printf 'groups:%s\n' "${groups[@]}"
-    printf 'backup:%s\n' "${backup[@]}"
-    printf 'options:%s\n' "${options[@]}"
+    [[ "${_pkg_pkgdesc}" ]] && echo pkgdesc:"${pkgdesc}"
+    [[ "${_pkg_url}" ]] && echo url:"${url}"
+    [[ "${_pkg_install}" ]] && echo install:"${install}"
+    [[ "${_pkg_changelog}" ]] && echo changelog:"${changelog}"
+    [[ "${_pkg_license}" ]] && printf 'license:%s\n' "${license[@]}"
+    [[ "${_pkg_groups}" ]] && printf 'groups:%s\n' "${groups[@]}"
+    [[ "${_pkg_backup}" ]] && printf 'backup:%s\n' "${backup[@]}"
+    [[ "${_pkg_options}" ]] && printf 'options:%s\n' "${options[@]}"
     echo PACKAGEARCH
     echo arch:any
-    printf 'checkdepends:%s\n' "${checkdepends[@]}"
-    printf 'depends:%s\n' "${depends[@]}"
-    printf 'optdepends:%s\n' "${optdepends[@]}"
-    printf 'provides:%s\n' "${provides[@]}"
-    printf 'conflicts:%s\n' "${conflicts[@]}"
-    printf 'replaces:%s\n' "${replaces[@]}"
+    [[ "${_pkg_checkdepends}" ]] && printf 'checkdepends:%s\n' "${checkdepends[@]}"
+    [[ "${_pkg_depends}" ]] && printf 'depends:%s\n' "${depends[@]}"
+    [[ "${_pkg_optdepends}" ]] && printf 'optdepends:%s\n' "${optdepends[@]}"
+    [[ "${_pkg_provides}" ]] && printf 'provides:%s\n' "${provides[@]}"
+    [[ "${_pkg_conflicts}" ]] && printf 'conflicts:%s\n' "${conflicts[@]}"
+    [[ "${_pkg_replaces}" ]] && printf 'replaces:%s\n' "${replaces[@]}"
     echo END
     if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
       if [[ "${#_arch_collapsed}" != 3 ]]; then

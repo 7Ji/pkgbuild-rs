@@ -11,4 +11,9 @@
           eval "${_buffer}"
           _buffer=
         fi
-      elif [[ "${_line}" =~ (
+      else
+        [[ "${_line}" != *=* ]] && continue
+        _line_value="${_line#*=}"
+        _line_key="${_line%%=*}"
+        _line="${_line_key##* }=${_line_value}"
+        case "${_line}" in
