@@ -11,13 +11,14 @@ fn main() {
         }
     }
     fn buffer_extend_dump_plain(
-        buffer: &mut Vec<u8>, name: &[u8], indent_level: usize
+        buffer: &mut Vec<u8>, name: &[u8], prefix: &[u8], indent_level: usize
     ) {
         buffer_extend_indent(buffer, indent_level);
         buffer.extend_from_slice(b"echo ");
         buffer.extend_from_slice(name);
         buffer.extend_from_slice(b":\"${");
         buffer.extend_from_slice(name);
+        buffer.extend_from_slice(b"_pkg");
         buffer.extend_from_slice(b"}\"\n");
     }
     fn buffer_extend_multi_dump_plain(
@@ -132,7 +133,7 @@ fn main() {
         PACKAGE_ARRAY_ITEMS.iter()).chain(
         PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS.iter())
     {
-        buffer.push(b' ');
+        buffer.extend_from_slice(b" _pkg_");
         buffer.extend_from_slice(items);
     }
     buffer.push(b'\n');

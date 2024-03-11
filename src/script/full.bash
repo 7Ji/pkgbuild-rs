@@ -96,7 +96,7 @@ while read -r _line; do
       echo "No package split function for ${_pkgname}"
       exit 4
     fi
-    unset -v pkgdesc url install changelog license groups backup options checkdepends depends optdepends provides conflicts replaces
+    unset -v _pkg_pkgdesc _pkg_url _pkg_install _pkg_changelog _pkg_license _pkg_groups _pkg_backup _pkg_options _pkg_checkdepends _pkg_depends _pkg_optdepends _pkg_provides _pkg_conflicts _pkg_replaces
     _arch_backup=("${arch[@]}")
     IFS=$'\n'
     _lines=($(declare -f "${_pkg_func}"))
@@ -107,14 +107,14 @@ while read -r _line; do
         _buffer+="
         ${_line}"
         if [[ "${_line}" == *');' ]]; then
-          eval "${_buffer}"
+          eval _pkg_"${_buffer}"
           _buffer=
         fi
       elif [[ "${_line}" =~ (pkgdesc|url|install|changelog)'+'?'=' ]]; then
-        eval "${_line}"
+        eval _pkg_"${_line}"
       elif [[ "${_line}" =~ ((arch|license|groups|backup|options)|(checkdepends|depends|optdepends|provides|conflicts|replaces)(|_.+))'=('* ]]; then
         if [[ "${_line}" == *');' ]]; then
-          eval "${_line}"
+          eval _pkg_"${_line}"
         else
           _buffer="${_line}"
         fi

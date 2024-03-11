@@ -8,7 +8,7 @@
         _buffer+="
         ${_line}"
         if [[ "${_line}" == *');' ]]; then
-          eval "${_buffer}"
+          eval _pkg_"${_buffer}"
           _buffer=
         fi
       elif [[ "${_line}" =~ (

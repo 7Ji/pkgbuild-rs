@@ -1,6 +1,6 @@
 )(|_.+))'=('* ]]; then
         if [[ "${_line}" == *');' ]]; then
-          eval "${_line}"
+          eval _pkg_"${_line}"
         else
           _buffer="${_line}"
         fi

@@ -1,3 +1,3 @@
 )'+'?'=' ]]; then
-        eval "${_line}"
+        eval _pkg_"${_line}"
       elif [[ "${_line}" =~ ((arch
