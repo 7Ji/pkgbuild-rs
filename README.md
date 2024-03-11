@@ -16,7 +16,7 @@ The parser script is highly optimized. The logic is dynamically assembled yet st
 
 The whole parser script uses only `Bash` native logics and does not spawn child processes other than the subshells to extract package-specific variables, and even those are avoidable.
 
-_On a test against ArchLinux's 12575 official `PKGBUILD`s, the example `benchmark` executable took ~153.5 seconds when single-threaded and ~6.6 seconds when multi-threaded on an AMD Ryzen 15600X_
+_On a test against ArchLinux's 12575 official `PKGBUILD`s, the example `benchmark` executable took ~44.1 seconds when single-threaded and ~6.7 seconds when multi-threaded on an AMD Ryzen 5600X_
 
 ## Examples
 There are a couple few examples under [examples](examples), to run them, do like
