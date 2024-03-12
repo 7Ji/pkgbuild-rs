@@ -76,7 +76,6 @@ while read -r _line; do
       echo END
     done
   fi
-  _name_collapsed="${pkgname[*]}"
   _pkg_used=''
   for _pkgname in "${pkgname[@]}"; do
   (
@@ -90,7 +89,7 @@ while read -r _line; do
         exit 3
       fi
       _pkg_func=package
-      _pkg_used='y'
+      _pkg_used=y
     elif [[ "${_pkgname}" == "${pkgbase}" ]]; then
       echo END
       exit
@@ -266,8 +265,8 @@ while read -r _line; do
       arch=("${_arch_backup[@]}")
     fi
     echo END
-  )
+  ) || exit $?
   done
   echo END
-)
+) || exit $?
 done

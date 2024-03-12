@@ -5,5 +5,5 @@
       arch=("${_arch_backup[@]}")
     fi
     echo END
-  )
+  ) || exit $?
   done

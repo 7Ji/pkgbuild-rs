@@ -187,22 +187,8 @@ fn main() {
     buffer_extend_case_flag(&mut buffer, b"arch", 5, true);
     buffer_extend_cases_flags(&mut buffer, PACKAGE_ARRAY_ITEMS, 5, true);
     buffer_extend_cases_flags(&mut buffer, PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS, 5, true);
-    // buffer_extend_indent(&mut buffer, 2);
-    // buffer.extend_from_slice(b"esac\n");
     buffer.extend_from_slice(include_bytes!(
         "src/script/60_pkg_end_cases.bash"));
-    // buffer_extend_multicase(&mut buffer, PACKAGE_PLAIN_ITEMS);
-    // buffer.extend_from_slice(include_bytes!(
-    //     "src/script/60_pkg_until_array.bash"));
-    // for items in PACKAGE_ARRAY_ITEMS.iter() {
-    //     buffer.push(b'|');
-    //     buffer.extend_from_slice(items)
-    // }
-    // buffer.extend_from_slice(b")|(");
-    // buffer_extend_multicase(&mut buffer, 
-    //     PACKAGE_ARCH_SPECIFIC_ARRAY_ITEMS);
-    // buffer.extend_from_slice(include_bytes!(
-    //     "src/script/70_pkg_array_til_dump.bash"));
     buffer_extend_dump_array_license_workaround(&mut buffer, 2);
     buffer_extend_multi_dump_pkg_plain(&mut buffer, 
         PACKAGE_PLAIN_ITEMS, 2);
@@ -221,6 +207,6 @@ fn main() {
     buffer.extend_from_slice(include_bytes!(
         "src/script/90_pkg_end_other.bash"));
     buffer_extend_indent(&mut buffer, 1);
-    buffer.extend_from_slice(b"echo END\n)\ndone\n");
+    buffer.extend_from_slice(b"echo END\n) || exit $?\ndone\n");
     file.write_all(&buffer).expect("Failed to write to script");
 }

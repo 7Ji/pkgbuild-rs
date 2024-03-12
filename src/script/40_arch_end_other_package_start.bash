@@ -1,7 +1,6 @@
       echo END
     done
   fi
-  _name_collapsed="${pkgname[*]}"
   _pkg_used=''
   for _pkgname in "${pkgname[@]}"; do
   (
@@ -15,7 +14,7 @@
         exit 3
       fi
       _pkg_func=package
-      _pkg_used='y'
+      _pkg_used=y
     elif [[ "${_pkgname}" == "${pkgbase}" ]]; then
       echo END
       exit
