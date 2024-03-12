@@ -32,6 +32,43 @@ macro_rules! string_from_slice_u8 {
     ($l:expr) => {String::from_utf8_lossy($l).to_string()}
 }
 
+#[derive(Debug, Clone)]
+pub enum ParserScriptError {
+    PkbguildMultiArchWithAny,
+    PackageFunctionNotFound,
+    PackageMultiArchWithAny,
+    Other (Option<i32>),
+}
+
+impl Display for ParserScriptError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParserScriptError::PkbguildMultiArchWithAny => 
+                write!(f, "PKGBUILD multiarch with 'any' as one of the arch"),
+            ParserScriptError::PackageFunctionNotFound =>
+                write!(f, "Package function not found, could be be expanded"),
+            ParserScriptError::PackageMultiArchWithAny => 
+                write!(f, "Package multiarch with 'any' as one of the arch"),
+            ParserScriptError::Other(value) => 
+                write!(f, "Other bash error: {:?}", value),
+        }
+    }
+}
+
+impl From<Option<i32>> for ParserScriptError {
+    fn from(value: Option<i32>) -> Self {
+        if let Some(value) = &value {
+            match *value - 256 {
+                -1 => return Self::PkbguildMultiArchWithAny,
+                -2 => return Self::PackageFunctionNotFound,
+                -3 => return Self::PackageMultiArchWithAny,
+                _ => (),
+            }
+        }
+        Self::Other(value)
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     /// Some I/O error happended, possibly during the script generation
@@ -50,14 +87,14 @@ pub enum Error {
     /// The child's Stdio handles are incomplete and we can't get, this is not
     /// fixable, but intentionally not panic to reduce damage to caller
     ChildStdioIncomplete,
-    /// The child has bad return
-    ChildBadReturn(Option<i32>),
     /// Some thread paniked and not joinable, this should not happen in our 
     /// code explicitly
     #[cfg(not(feature = "nothread"))]
     ThreadUnjoinable,
     /// Some PKGBUILDs were broken, this contains a list of those PKGBUILDs
     BrokenPKGBUILDs(Vec<String>),
+    /// The parser script has errored out
+    ParserScriptError(ParserScriptError),
     /// The parser script has returned some unexpected, illegal output
     ParserScriptIllegalOutput(Vec<u8>)
 }
@@ -75,12 +112,12 @@ impl Clone for Error {
                     output: output.clone(), 
                     result: result.clone() },
             Self::ChildStdioIncomplete => Self::ChildStdioIncomplete,
-            Self::ChildBadReturn(arg0) => 
-                Self::ChildBadReturn(arg0.clone()),
             #[cfg(not(feature = "nothread"))]
             Self::ThreadUnjoinable => Self::ThreadUnjoinable,
             Self::BrokenPKGBUILDs(arg0) => 
                 Self::BrokenPKGBUILDs(arg0.clone()),
+            Self::ParserScriptError(arg0) => 
+                Self::ParserScriptError(arg0.clone()),
             Self::ParserScriptIllegalOutput(arg0) => 
                 Self::ParserScriptIllegalOutput(arg0.clone()),
         }
@@ -113,12 +150,12 @@ impl Display for Error {
             } => write!(f, "Result Count Mismatch: Input {}, Output {}",
                     input, output),
             Error::ChildStdioIncomplete => write!(f, "Child StdIO incomplete"),
-            Error::ChildBadReturn(e) => 
-                write!(f, "Child Bad Return: {:?}", e),
             #[cfg(not(feature = "nothread"))]
             Error::ThreadUnjoinable => write!(f, "Thread Not Joinable"),
             Error::BrokenPKGBUILDs(e) => 
                 write!(f, "PKGBUILDs Broken ({})", e.len()),
+            Error::ParserScriptError(e) =>
+                write!(f, "Parser Script Error: {}", e),
             Error::ParserScriptIllegalOutput(e) => write!(
                 f, "Parser Script Illegal Output: {}", str_from_slice_u8!(e)),
         }
@@ -718,7 +755,8 @@ impl Parser {
                 };
                 if ! status.success() {
                     log::error!("Child did not execute successfully");
-                    return Err(Error::ChildBadReturn(status.code()))
+                    return Err(Error::ParserScriptError(
+                        ParserScriptError::from(status.code())))
                 }
                 (out, err)
             },

@@ -3,7 +3,7 @@
   if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
     if [[ "${#_arch_collapsed}" != 3 ]]; then
       echo "ERROR: PKGBUILD Architecture 'any' found when multiple architecture defined"
-      exit 2
+      exit -1
     fi
   else
     for _arch in "${arch[@]}"; do

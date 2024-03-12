@@ -49,7 +49,7 @@ while read -r _line; do
   if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
     if [[ "${#_arch_collapsed}" != 3 ]]; then
       echo "ERROR: PKGBUILD Architecture 'any' found when multiple architecture defined"
-      exit 2
+      exit -1
     fi
   else
     for _arch in "${arch[@]}"; do
@@ -86,16 +86,16 @@ while read -r _line; do
     elif [[ $(type -t package) == function ]]; then
       if [[ "${_pkg_used}" ]]; then
         echo "Did not find package split function for ${_pkgname}"
-        exit 3
+        exit -2
       fi
       _pkg_func=package
       _pkg_used=y
-    elif [[ "${_pkgname}" == "${pkgbase}" ]]; then
+    elif [[ -z $(type -t build) ]]; then
       echo END
       exit
     else
       echo "No package split function for ${_pkgname}"
-      exit 4
+      exit -2
     fi
     _arch_backup=("${arch[@]}")
     IFS=$'\n'
@@ -242,10 +242,11 @@ while read -r _line; do
     [[ "${_pkg_conflicts}" ]] && printf 'conflicts:%s\n' "${conflicts[@]}"
     [[ "${_pkg_replaces}" ]] && printf 'replaces:%s\n' "${replaces[@]}"
     echo END
+    _arch_collapsed="${arch[*]}"
     if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
       if [[ "${#_arch_collapsed}" != 3 ]]; then
         echo "ERROR: Package architecture 'any' found when multiple architecture defined"
-        exit 6
+        exit -3
       fi
     else
       for _arch in "${arch[@]}"; do
@@ -260,9 +261,6 @@ while read -r _line; do
         printf 'replaces:%s\n' "${_arch_replaces[@]}"
         echo END
       done
-    fi
-    if [[ "${arch[*]}" != "${_arch_collapsed}" ]]; then
-      arch=("${_arch_backup[@]}")
     fi
     echo END
   ) || exit $?
