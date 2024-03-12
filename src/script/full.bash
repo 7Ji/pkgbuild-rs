@@ -46,7 +46,7 @@ while read -r _line; do
   printf 'replaces:%s\n' "${replaces[@]}"
   echo END
   _arch_collapsed="${arch[*]}"
-  if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
+  if [[ " ${_arch_collapsed} " == *any* ]]; then
     if [[ "${#_arch_collapsed}" != 3 ]]; then
       echo "ERROR: PKGBUILD Architecture 'any' found when multiple architecture defined"
       exit -1
@@ -106,7 +106,7 @@ while read -r _line; do
       if [[ "${_buffer}" ]]; then
         _buffer+="
         ${_line}"
-        if [[ "${_line}" == *');' ]]; then
+        if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
           eval "${_buffer}"
           _buffer=
         fi
@@ -133,7 +133,7 @@ while read -r _line; do
             _pkg_changelog='y'
             ;;
           arch*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -141,7 +141,7 @@ while read -r _line; do
             _pkg_arch='y'
             ;;
           license*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -149,7 +149,7 @@ while read -r _line; do
             _pkg_license='y'
             ;;
           groups*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -157,7 +157,7 @@ while read -r _line; do
             _pkg_groups='y'
             ;;
           backup*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -165,7 +165,7 @@ while read -r _line; do
             _pkg_backup='y'
             ;;
           options*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -173,7 +173,7 @@ while read -r _line; do
             _pkg_options='y'
             ;;
           checkdepends*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -181,7 +181,7 @@ while read -r _line; do
             _pkg_checkdepends='y'
             ;;
           depends*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -189,7 +189,7 @@ while read -r _line; do
             _pkg_depends='y'
             ;;
           optdepends*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -197,7 +197,7 @@ while read -r _line; do
             _pkg_optdepends='y'
             ;;
           provides*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -205,7 +205,7 @@ while read -r _line; do
             _pkg_provides='y'
             ;;
           conflicts*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -213,7 +213,7 @@ while read -r _line; do
             _pkg_conflicts='y'
             ;;
           replaces*)
-            if [[ "${_line}" == *');' ]]; then
+            if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
               eval "${_line}"
             else
               _buffer="${_line}"
@@ -243,7 +243,7 @@ while read -r _line; do
     [[ "${_pkg_replaces}" ]] && printf 'replaces:%s\n' "${replaces[@]}"
     echo END
     _arch_collapsed="${arch[*]}"
-    if [[ " ${_arch_collapsed} " =~ (^| )any( |$) ]]; then
+    if [[ " ${_arch_collapsed} " == *any* ]]; then
       if [[ "${#_arch_collapsed}" != 3 ]]; then
         echo "ERROR: Package architecture 'any' found when multiple architecture defined"
         exit -3

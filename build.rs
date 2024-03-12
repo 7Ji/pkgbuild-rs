@@ -86,7 +86,7 @@ fn main() {
         buffer.extend_from_slice(b"*)\n");
         buffer_extend_indent(buffer, indent_level + 1);
         if wait_line {
-            buffer.extend_from_slice(b"if [[ \"${_line}\" == *');' ]]; then\n");
+            buffer.extend_from_slice(b"if [[ \"${_line}\" == *');' || \"${_line}\" == *')' ]]; then\n");
             buffer_extend_indent(buffer, indent_level + 2);
         }
         buffer.extend_from_slice(b"eval \"${_line}\"\n");

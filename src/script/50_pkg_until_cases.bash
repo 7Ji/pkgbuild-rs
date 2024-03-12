@@ -7,7 +7,7 @@
       if [[ "${_buffer}" ]]; then
         _buffer+="
         ${_line}"
-        if [[ "${_line}" == *');' ]]; then
+        if [[ "${_line}" == *');' || "${_line}" == *')' ]]; then
           eval "${_buffer}"
           _buffer=
         fi
