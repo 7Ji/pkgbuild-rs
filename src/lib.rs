@@ -1939,6 +1939,7 @@ pub enum SourceProtocol {
     Http,
     Https,
     Rsync,
+    Scp,
     Bzr {
         fragment: Option<BzrSourceFragment>,
     },
@@ -1968,6 +1969,7 @@ impl Display for SourceProtocol {
             SourceProtocol::Http => write!(f, "http")?,
             SourceProtocol::Https => write!(f, "https")?,
             SourceProtocol::Rsync => write!(f, "rsync")?,
+            SourceProtocol::Scp => write!(f, "scp")?,
             SourceProtocol::Bzr { fragment } => {
                 write!(f, "bzr")?;
                 if let Some(fragment) = fragment {
@@ -2023,6 +2025,7 @@ impl SourceProtocol {
             SourceProtocol::Http => "http",
             SourceProtocol::Https => "https",
             SourceProtocol::Rsync => "rsync",
+            SourceProtocol::Scp => "scp",
             SourceProtocol::Bzr { fragment: _ } => "bzr",
             SourceProtocol::Fossil { fragment: _ } => "fossil",
             SourceProtocol::Git { fragment: _, signed: _ } => "git",
@@ -2081,6 +2084,7 @@ impl From<&str> for Source {
                     "http" => SourceProtocol::Http,
                     "https" => SourceProtocol::Https,
                     "rsync" => SourceProtocol::Rsync,
+                    "scp" => SourceProtocol::Scp,
                     "bzr" => {
                         let (urln, fragment) 
                             = BzrSourceFragment::from_url(url);
