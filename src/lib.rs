@@ -11,6 +11,8 @@ use std::os::fd::AsRawFd;
 use std::thread::spawn;
 #[cfg(feature = "vercmp")]
 use std::cmp::Ordering;
+#[cfg(not(feature = "tempfile"))]
+use std::io::BufWriter;
 
 #[cfg(feature = "unsafe_str")]
 macro_rules! str_from_slice_u8 {
