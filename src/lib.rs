@@ -300,7 +300,7 @@ impl ParserScriptBuilder {
         {
             log::error!("Failed to write script into file '{}': {}", 
                     path.as_ref().display(), e);
-            return Err(Error::IoError(e))
+            return Err(e.into())
         }
         Ok(ParserScript::Persistent(path.as_ref().into()))
     }
