@@ -34,7 +34,7 @@ macro_rules! string_from_slice_u8 {
     ($l:expr) => {String::from_utf8_lossy($l).to_string()}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ParserScriptError {
     PkbguildMultiArchWithAny,
     PackageFunctionNotFound,
@@ -71,10 +71,11 @@ impl From<Option<i32>> for ParserScriptError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Error {
-    /// Some I/O error happended, possibly during the script generation
-    IoError(std::io::Error),
+    /// Some I/O error happended, possibly during the script generation,
+    /// collapsed into string to achieve Clone
+    IoError(String),
     /// Nix Errno, possibly returned when we try to set child stdin/out/err
     /// as non-blocking
     #[cfg(feature = "nothread")]
@@ -101,36 +102,11 @@ pub enum Error {
     ParserScriptIllegalOutput(Vec<u8>)
 }
 
-impl Clone for Error {
-    fn clone(&self) -> Self {
-        match self {
-            Self::IoError(arg0) => Self::IoError(arg0.kind().into()),
-            #[cfg(feature = "nothread")]
-            Self::NixErrno(arg0) => Self::NixErrno(*arg0),
-            Self::MismatchedResultCount { 
-                input, output, result 
-            } => Self::MismatchedResultCount { 
-                    input: input.clone(), 
-                    output: output.clone(), 
-                    result: result.clone() },
-            Self::ChildStdioIncomplete => Self::ChildStdioIncomplete,
-            #[cfg(not(feature = "nothread"))]
-            Self::ThreadUnjoinable => Self::ThreadUnjoinable,
-            Self::BrokenPKGBUILDs(arg0) => 
-                Self::BrokenPKGBUILDs(arg0.clone()),
-            Self::ParserScriptError(arg0) => 
-                Self::ParserScriptError(arg0.clone()),
-            Self::ParserScriptIllegalOutput(arg0) => 
-                Self::ParserScriptIllegalOutput(arg0.clone()),
-        }
-    }
-}
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
-        Self::IoError(value)
+        Self::IoError(format!("{}", value))
     }
 }
 
@@ -281,7 +257,7 @@ impl ParserScriptBuilder {
             {
                 log::error!("Failed to write script into file '{}': {}", 
                      path.as_ref().display(), e);
-                return Err(Error::IoError(e))
+                return Err(e.into())
             }
             Ok(ParserScript::Persistent(path.as_ref().into()))
         } else {
@@ -298,7 +274,7 @@ impl ParserScriptBuilder {
             {
                 log::error!("Failed to write script into temp file '{}': {}", 
                      temp_file.path().display(), e);
-                return Err(Error::IoError(e))
+                return Err(e.into())
             }
             Ok(ParserScript::Temporary(temp_file))
         }
