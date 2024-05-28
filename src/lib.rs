@@ -1598,11 +1598,25 @@ pub struct Package {
 
 macro_rules! pkg_iter_all_arch {
     ($pkg:ident, $var:ident, $type: ident) => {
-        pub fn $var(&self) -> impl Iterator<Item = &$type> {
-            let iter_any = self.multiarch.any.$var.iter();
-            let iter_arches = self.multiarch.arches.iter()
-                .map(|(_, pkg_arch)|pkg_arch.$var.iter()).flatten();
-            iter_any.chain(iter_arches)
+        pub fn $var(&self, arch: Option<&Architecture>) -> Vec<&$type> {
+            let mut values = Vec::new();
+            for value in self.multiarch.any.$var.iter() {
+                values.push(value)
+            }
+            if let Some(arch) = arch {
+                if let Some(arch_specific) = self.multiarch.arches.get(arch) {
+                    for value in arch_specific.$var.iter() {
+                        values.push(value)
+                    }
+                }
+            } else {
+                for arch_specific in self.multiarch.arches.values() {
+                    for value in arch_specific.$var.iter() {
+                        values.push(value)
+                    }
+                }
+            }
+            values
         }
     }
 }
