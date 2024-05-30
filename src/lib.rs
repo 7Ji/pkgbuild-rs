@@ -1652,9 +1652,9 @@ where
 impl Display for Package {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{name: {}, depends: [", self.pkgname)?;
-        format_write_iter(f, self.depends())?;
+        format_write_iter(f, self.depends(None))?;
         write!(f, "], provides: [")?;
-        format_write_iter(f, self.provides())?;
+        format_write_iter(f, self.provides(None))?;
         write!(f, "]}}")
     }
 }
@@ -2425,13 +2425,13 @@ impl Display for Pkgbuild {
             write!(f, " (has pkgver func)")?;
         }
         write!(f, ", depends: [")?;
-        format_write_iter(f, self.depends())?;
+        format_write_iter(f, self.depends(None))?;
         write!(f, "], makedepends: [")?;
-        format_write_iter(f, self.makedepends())?;
+        format_write_iter(f, self.makedepends(None))?;
         write!(f, "], provides: [")?;
-        format_write_iter(f, self.provides())?;
+        format_write_iter(f, self.provides(None))?;
         write!(f, "], sources_with_checksums: [")?;
-        format_write_iter(f, self.sources_with_checksums())?;
+        format_write_iter(f, self.sources_with_checksums(None))?;
         write!(f, "]}}")
     }
 }
