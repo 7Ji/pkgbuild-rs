@@ -82,6 +82,11 @@ name = "genscript"
 path = "examples/genscript.rs"
 
 [[example]]
+name = "jail"
+path = "examples/jail.rs"
+required-features = ["tempfile", "__msgpack"]
+
+[[example]]
 name = "printsrcinfo"
 path = "examples/printsrcinfo.rs"
 required-features = ["srcinfo", "tempfile"]

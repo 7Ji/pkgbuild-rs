@@ -733,6 +733,8 @@ impl Parser {
                 };
                 if ! status.success() {
                     log::error!("Child did not execute successfully");
+                    log::debug!("Current stdout: {}", str_from_slice_u8!(&out));
+                    log::debug!("Current stderr: {}", str_from_slice_u8!(&err));
                     return Err(Error::ParserScriptError(
                         ParserScriptError::from(status.code())))
                 }

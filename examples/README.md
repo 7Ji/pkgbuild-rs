@@ -23,5 +23,8 @@ Parse a PKGBUILD in argument and print the info in the same format as `makepkg -
 ## spawner
 A simple multi-call program to spawn a child process to read PKGBUILD then read them back.
 
+## jail
+A multi-call, like `spawner`, but utilizes `bwrap` to spwan the reader inside a safe, lightweight container.
+
 ## vercmp
 Parse two package versions into native `PlainVersion`s and compare them with the same logic pacman uses internally. The details are printed to stderr, and the stdout behaviour is the same as `vercmp` on Arch.

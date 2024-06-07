@@ -18,6 +18,12 @@ The whole parser script uses only `Bash` native logics and does not spawn child 
 
 _On a test against ArchLinux's 12575 official `PKGBUILD`s, the example `benchmark` executable took ~42.9 seconds when single-threaded and ~5.9 seconds when multi-threaded on an AMD Ryzen 5600X_
 
+### Strongly typed
+All data parsed from `PKGBUILD`s are stored as strongly typed Rust native types, these include version structures that could be easily compared with the built-in `vercmp` feature, dependencies that include seperate package name and version fields, hashes that are stored as byte arrays, sources that have protocol type and protocol-specific fields, etc.
+
+### Piping friendly
+Nevertheless, while all data structures are strongly typed, the whole `PKGBUILD` still derives `serde`, both deserialization and serialization. This means you can run the parser in an encapsuled, isolated, safe container that cannot reach sensitive data on host, and let it write serialized data to its output, so the outer process that runs on host could deserialize it again. This would be of great use if the security concern brought by the fact the `PKGBUILD` is always valid Bash script and they could do whatever a Bash script could do shall be avoided. See the [Security concern](#security-concern) section below, and check out the `jail` example for how to implement this.
+
 ## Examples
 There are a couple few examples under [examples](examples), to run them, do like
 ```
