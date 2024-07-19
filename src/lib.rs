@@ -225,7 +225,6 @@ impl ParserScriptBuilder {
         buffer.extend_from_slice(b"/source.sh\'\n");
         buffer.extend_from_slice(include_bytes!(
             "script/full.bash"));
-        log::debug!("Parser script content:\n{}", str_from_slice_u8!(&buffer));
         writer.write_all(&buffer)
     }
 
